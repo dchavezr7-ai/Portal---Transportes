@@ -1,4 +1,11 @@
 import type { Agencia } from '@/types/agency'
+import type {
+  EventoAsiento,
+  FiltrosConsulta,
+  MapaAsientosConsulta,
+  RutaCiudad,
+  ViajeConsulta,
+} from '@/types/consultaViaje'
 import type { ConsultaDashboard, DatosDashboard } from '@/types/dashboard'
 import type { MetodoPago } from '@/types/pago'
 import type { ComprobanteOperacion, EstadoAsientosViaje, RegistrarOperacionInput } from '@/types/pasaje'
@@ -34,6 +41,31 @@ export interface TicketingService {
    * `ServiceError('ASIENTO_OCUPADO')` señalando cuál.
    */
   registrarOperacion(input: RegistrarOperacionInput): Promise<ComprobanteOperacion>
+}
+
+/**
+ * Consulta de viajes y disponibilidad de asientos contra el backend REAL.
+ * Es de solo lectura: no abre sesiones de reserva ni bloquea asientos. Se
+ * mantiene separado de `TicketingService` (mock, incluye la venta) para no
+ * mezclar datos reales con la simulación del asistente "Registrar pasaje".
+ */
+export interface ConsultaViajesService {
+  /** Pares origen→destino activos (`GET /api/rutas-ciudad`). */
+  listarRutasCiudad(): Promise<RutaCiudad[]>
+  /** `GET /api/viajes/buscar`. Lanza `ApiError` ante 400 u otros fallos. */
+  buscarViajes(filtros: FiltrosConsulta): Promise<ViajeConsulta[]>
+  /** `GET /api/viajes/{id}/asientos` sin token de sesión. */
+  obtenerMapaAsientos(idViaje: number): Promise<MapaAsientosConsulta>
+  /**
+   * Canal SSE `GET /api/viajes/{id}/asientos/eventos`. `alAbrir` se invoca al
+   * conectar y en CADA reconexión (conviene recargar el mapa completo);
+   * `alError` cuando se pierde la conexión (el navegador reintenta solo).
+   * Devuelve la función que cierra el canal.
+   */
+  suscribirAsientos(
+    idViaje: number,
+    manejadores: { alAbrir?: () => void; alError?: () => void; alAsiento?: (evento: EventoAsiento) => void },
+  ): () => void
 }
 
 export interface DashboardService {

@@ -12,7 +12,7 @@ import { hasPermission } from '@/stores/authStore'
  * en `views/MainView/SectionRegistry.tsx`; los módulos con `soon: true` aún
  * no existen y abren un placeholder "Próximamente" (no tienen lógica).
  *
- *   Operaciones   → Registrar pasaje ✔ · Viajes          (personal de agencia)
+ *   Operaciones   → Registrar pasaje ✔ · Viajes ✔        (personal de agencia)
  *   Comercial     → Pasajes · Clientes                   (personal de agencia)
  *   Supervisión   → Dashboard ✔                          (gerente)
  */
@@ -29,7 +29,7 @@ export const navigationConfig: NavEntry[] = [
       label: 'Operaciones',
       items: [
         { id: 'registrar-pasaje', title: 'Registrar pasaje', sectionId: 'registrar-pasaje', icon: Ticket, requiredPermission: PERMISO_AGENCIA },
-        { id: 'viajes', title: 'Viajes', sectionId: 'viajes', icon: Bus, requiredPermission: PERMISO_AGENCIA, soon: true },
+        { id: 'viajes', title: 'Viajes', sectionId: 'viajes', icon: Bus, requiredPermission: PERMISO_AGENCIA },
       ],
     },
   },

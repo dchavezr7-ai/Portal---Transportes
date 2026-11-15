@@ -1,4 +1,5 @@
 import { findNavContext } from '@/config/navigation'
+import { ConsultaViajesSection } from './sections/ConsultaViajesSection'
 import { DashboardLazy } from './sections/DashboardLazy'
 import { RegistrarPasajeSection } from './sections/RegistrarPasajeSection'
 import { SectionPlaceholder } from './sections/SectionPlaceholder'
@@ -12,6 +13,7 @@ import { SectionPlaceholder } from './sections/SectionPlaceholder'
  */
 export function renderSection(sectionId: string) {
   if (sectionId === 'registrar-pasaje') return <RegistrarPasajeSection />
+  if (sectionId === 'viajes') return <ConsultaViajesSection />
   if (sectionId === 'dashboard') return <DashboardLazy />
 
   const contexto = findNavContext(sectionId)
