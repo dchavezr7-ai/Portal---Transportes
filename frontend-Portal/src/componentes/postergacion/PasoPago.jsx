@@ -92,7 +92,10 @@ export function PasoPago({ pasaje, comparacion, metodo, alCambiarMetodo, procesa
             <strong>
               {avisoPago.tipo === 'pendiente' ? 'Pago pendiente. ' : avisoPago.tipo === 'rechazado' ? 'Pago rechazado. ' : 'No se pudo procesar. '}
             </strong>
-            {avisoPago.mensaje} Tu viaje y tu asiento originales se conservan; puedes reintentar.
+                        {avisoPago.mensaje}{' '}
+            {avisoPago.tipo === 'pendiente'
+              ? 'Tu viaje y tu asiento originales se conservan. No se cobrará otra vez hasta conocer el resultado.'
+              : 'Tu viaje y tu asiento originales se conservan; puedes reintentar.'}
           </p>
         )}
 

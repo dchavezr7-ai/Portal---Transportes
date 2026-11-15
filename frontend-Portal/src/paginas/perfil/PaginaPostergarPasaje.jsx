@@ -22,6 +22,7 @@ import { ESCENARIO_INICIAL } from '../../mock/postergacion/escenarios'
 import { esPasajeCompraDemo, obtenerPasajeMock, registrarPasajeExterno } from '../../mock/postergacion/pasajes'
 import { formatearPrecio } from '../../utilidades/formato'
 import { puedeContinuarDesdeTarifa } from '../../utilidades/postergacion'
+import { puedeIniciarNuevoCobro } from '../../utilidades/cobroPostergacion'
 import '../../componentes/postergacion/postergacion.css'
 
 const PASOS = [
@@ -210,9 +211,12 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
                 alVolver={acciones.volver}
                 alCancelar={pedirCancelacion}
                 alContinuar={acciones.pagar}
-                textoContinuar={`${avisoPago ? 'Reintentar pago' : 'Pagar'} ${formatearPrecio(comparacion.montoAPagar, pasaje.moneda)}`}
+                textoContinuar={puedeIniciarNuevoCobro(intentos).permitido
+                  ? `${avisoPago ? 'Reintentar pago' : 'Pagar'} ${formatearPrecio(comparacion.montoAPagar, pasaje.moneda)}`
+                  : 'Pago en revisión'}
                 cargando={procesando}
                 bloqueado={procesando}
+                deshabilitado={!puedeIniciarNuevoCobro(intentos).permitido}
               />
             </>
           )}

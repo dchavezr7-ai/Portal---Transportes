@@ -9,6 +9,7 @@ import {
 } from '../servicios/postergacionMock'
 import { borrarSesionAsientos } from '../servicios/viajesServicio'
 import { CODIGOS_RECHAZO, puedeContinuarDesdeTarifa } from '../utilidades/postergacion'
+import { puedeIniciarNuevoCobro } from '../utilidades/cobroPostergacion'
 import { calcularTarifaDelAsiento } from '../utilidades/reprogramacionAsientos'
 import { useReservaReprogramacion } from './useReservaReprogramacion'
 
@@ -200,6 +201,11 @@ export function usePostergacion({ pasaje, idCliente, escenario, alEscenarioConsu
 
   const pagar = useCallback(async () => {
     if (enVuelo.current) return
+    const cobro = puedeIniciarNuevoCobro(estadoRef.current.intentos)
+    if (!cobro.permitido) {
+      despachar({ tipo: 'aviso-pago', aviso: { tipo: 'pendiente', mensaje: cobro.motivo } })
+      return
+    }
     enVuelo.current = true
     const { viaje, asiento, comparacion, metodo, intentos } = estadoRef.current
     despachar({ tipo: 'iniciar-pago' })
