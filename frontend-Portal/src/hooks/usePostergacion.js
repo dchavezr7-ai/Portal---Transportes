@@ -9,8 +9,11 @@ import {
 } from '../servicios/postergacionMock'
 import { borrarSesionAsientos } from '../servicios/viajesServicio'
 import { CODIGOS_RECHAZO, puedeContinuarDesdeTarifa } from '../utilidades/postergacion'
+import { evaluarCobro } from '../utilidades/cobroPostergacion'
+import { VALORES_YAPE_INICIALES } from '../utilidades/pagoMercadoPago'
 import { calcularTarifaDelAsiento } from '../utilidades/reprogramacionAsientos'
 import { useReservaReprogramacion } from './useReservaReprogramacion'
+import { limitarCampoPago } from '../utilidades/limitarCampoPago'
 
 export const FASES = Object.freeze({
   VALIDANDO: 'validando',
@@ -36,6 +39,11 @@ function estadoInicial() {
     comparacion: null,
     aceptaCondiciones: false,
     metodo: 'tarjeta',
+    datosPago: {
+      tarjeta: { numero: '', titular: '', vencimiento: '', cvv: '' },
+      yape: { ...VALORES_YAPE_INICIALES },
+    },
+    erroresPago: {},
     procesando: false,
     busqueda: null,
     intentos: [],
@@ -76,7 +84,18 @@ function reductor(estado, accion) {
     case 'ir-a-pago':
       return { ...estado, fase: FASES.PAGO, avisoPago: null }
     case 'metodo':
-      return { ...estado, metodo: accion.metodo, avisoPago: null }
+      return { ...estado, metodo: accion.metodo, avisoPago: null, erroresPago: {} }
+    case 'editar-dato-pago':
+      return {
+        ...estado,
+        datosPago: {
+          ...estado.datosPago,
+          [accion.metodo]: { ...estado.datosPago[accion.metodo], [accion.campo]: accion.valor },
+        },
+        erroresPago: { ...estado.erroresPago, [accion.campo]: undefined },
+      }
+    case 'errores-pago':
+      return { ...estado, erroresPago: accion.errores, avisoPago: null }
     case 'iniciar-pago':
       return { ...estado, procesando: true, avisoPago: null }
     case 'confirmando':
@@ -157,6 +176,10 @@ export function usePostergacion({ pasaje, idCliente, escenario, alEscenarioConsu
 
   const aceptarCondiciones = useCallback((valor) => despachar({ tipo: 'aceptar', valor }), [])
   const cambiarMetodo = useCallback((metodo) => despachar({ tipo: 'metodo', metodo }), [])
+  const editarDatoPago = useCallback((metodo, campo, valor) => {
+    const actuales = estadoRef.current.datosPago[metodo]
+    despachar({ tipo: 'editar-dato-pago', metodo, campo, valor: limitarCampoPago(metodo, campo, valor, actuales) })
+  }, [])
   const volver = useCallback(() => {
     // Volver de elegir asiento a elegir viaje: se suelta el asiento y se cierra la sesión.
     if (estadoRef.current.fase === FASES.ASIENTO) {
@@ -200,6 +223,16 @@ export function usePostergacion({ pasaje, idCliente, escenario, alEscenarioConsu
 
   const pagar = useCallback(async () => {
     if (enVuelo.current) return
+    const { intentos: previos, metodo: elegido, datosPago } = estadoRef.current
+    const cobro = evaluarCobro({ intentos: previos, metodo: elegido, datos: datosPago })
+    if (!cobro.permitido) {
+      if (cobro.motivo) {
+        despachar({ tipo: 'aviso-pago', aviso: { tipo: 'pendiente', mensaje: cobro.motivo } })
+      } else {
+        despachar({ tipo: 'errores-pago', errores: cobro.errores })
+      }
+      return
+    }
     enVuelo.current = true
     const { viaje, asiento, comparacion, metodo, intentos } = estadoRef.current
     despachar({ tipo: 'iniciar-pago' })
@@ -254,6 +287,7 @@ export function usePostergacion({ pasaje, idCliente, escenario, alEscenarioConsu
       aceptarCondiciones,
       continuarDesdeTarifa,
       cambiarMetodo,
+      editarDatoPago,
       pagar,
       volver,
       reelegirAsiento,

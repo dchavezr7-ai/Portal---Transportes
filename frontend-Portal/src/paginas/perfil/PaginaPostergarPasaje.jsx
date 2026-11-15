@@ -22,6 +22,7 @@ import { ESCENARIO_INICIAL } from '../../mock/postergacion/escenarios'
 import { esPasajeCompraDemo, obtenerPasajeMock, registrarPasajeExterno } from '../../mock/postergacion/pasajes'
 import { formatearPrecio } from '../../utilidades/formato'
 import { puedeContinuarDesdeTarifa } from '../../utilidades/postergacion'
+import { puedeIniciarNuevoCobro } from '../../utilidades/cobroPostergacion'
 import '../../componentes/postergacion/postergacion.css'
 
 const PASOS = [
@@ -57,7 +58,7 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
     escenario,
     alEscenarioConsumido: consumirEscenarioAsiento,
   })
-  const { fase, viaje, asiento, comparacion, aceptaCondiciones, metodo, procesando, avisoPago, intentos, busqueda, versionMapa, resultado, sesion, sesionVencida } = estado
+  const { fase, viaje, asiento, comparacion, aceptaCondiciones, metodo, procesando, avisoPago, intentos, busqueda, versionMapa, resultado, sesion, sesionVencida, datosPago, erroresPago } = estado
 
   useEffect(() => {
     if (primeraFase.current) {
@@ -202,6 +203,9 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
                 comparacion={comparacion}
                 metodo={metodo}
                 alCambiarMetodo={acciones.cambiarMetodo}
+                datosPago={datosPago}
+                erroresPago={erroresPago}
+                alEditarDato={acciones.editarDatoPago}
                 procesando={procesando}
                 avisoPago={avisoPago}
                 intentos={intentos}
@@ -210,9 +214,12 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
                 alVolver={acciones.volver}
                 alCancelar={pedirCancelacion}
                 alContinuar={acciones.pagar}
-                textoContinuar={`${avisoPago ? 'Reintentar pago' : 'Pagar'} ${formatearPrecio(comparacion.montoAPagar, pasaje.moneda)}`}
+                textoContinuar={puedeIniciarNuevoCobro(intentos).permitido
+                  ? `${avisoPago ? 'Reintentar pago' : 'Pagar'} ${formatearPrecio(comparacion.montoAPagar, pasaje.moneda)}`
+                  : 'Pago en revisión'}
                 cargando={procesando}
                 bloqueado={procesando}
+                deshabilitado={!puedeIniciarNuevoCobro(intentos).permitido}
               />
             </>
           )}
