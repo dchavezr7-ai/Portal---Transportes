@@ -1,19 +1,12 @@
 import { findNavContext } from '@/config/navigation'
-import { ConsultaViajesSection } from './sections/ConsultaViajesSection'
+import { ClientesSection } from './sections/ClientesSection'
 import { DashboardLazy } from './sections/DashboardLazy'
 import { RegistrarPasajeSection } from './sections/RegistrarPasajeSection'
 import { SectionPlaceholder } from './sections/SectionPlaceholder'
 
-/**
- * Registro central de secciones de la Main View.
- *
- * Cada `sectionId` de `config/navigation.ts` debe resolver a una entrada
- * aquí. Solo existen las secciones del MVP; cualquier otro id cae en el
- * fallback "Sección no encontrada".
- */
 export function renderSection(sectionId: string) {
   if (sectionId === 'registrar-pasaje') return <RegistrarPasajeSection />
-  if (sectionId === 'viajes') return <ConsultaViajesSection />
+  if (sectionId === 'clientes') return <ClientesSection />
   if (sectionId === 'dashboard') return <DashboardLazy />
 
   const contexto = findNavContext(sectionId)

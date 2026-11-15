@@ -16,7 +16,11 @@ public class ViajeController {
     @GetMapping("/buscar")
     public List<ViajeResumenDto> buscar(@RequestParam String origen, @RequestParam String destino,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
-            @RequestParam(defaultValue = "cualquiera") String horario) {
+            @RequestParam(defaultValue = "cualquiera") String horario,
+            @RequestParam(required = false) String franjas) {
+        if (franjas != null) {
+            return viajes.buscarPorFranjas(origen, destino, fecha, franjas);
+        }
         return viajes.buscar(origen, destino, fecha, horario);
     }
 }

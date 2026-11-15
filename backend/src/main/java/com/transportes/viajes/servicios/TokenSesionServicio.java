@@ -49,8 +49,13 @@ public class TokenSesionServicio {
     }
 
     public SesionReserva crear(Long idViaje) {
+        return crear(idViaje, null);
+    }
+
+    public SesionReserva crear(Long idViaje, Integer minutosSolicitados) {
+        long minutos = minutosSolicitados == null ? minutosSesion : Math.max(1, Math.min(minutosSolicitados, minutosSesion));
         Instant ahora = Instant.now();
-        Instant expira = ahora.plus(Duration.ofMinutes(minutosSesion));
+        Instant expira = ahora.plus(Duration.ofMinutes(minutos));
         String idSesion = UUID.randomUUID().toString();
 
         String token = Jwts.builder()

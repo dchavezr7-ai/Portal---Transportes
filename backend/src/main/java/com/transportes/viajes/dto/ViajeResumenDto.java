@@ -14,5 +14,6 @@ public record ViajeResumenDto(
         String estadoReserva, boolean reservable,
         // Instantes en ms desde epoch (UTC). El navegador los usa con ahoraServidorMs para refrescar el estado
         // sin fiarse de su propio reloj; el backend vuelve a validar al reservar.
-        long salidaMs, long limiteReservaMs, long ahoraServidorMs, int minutosAnticipacion) {
+        long salidaMs, long limiteReservaMs, long ahoraServidorMs, int minutosAnticipacion,
+        int capacidad, String terminalOrigen, String terminalDestino, Integer duracionMin) {
 }

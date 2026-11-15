@@ -74,7 +74,7 @@ class PostergacionServicioTest {
                 salida.toLocalTime().toString(), "06:00", salida.toLocalDate().plusDays(1), "9 h", "Bus Cama",
                 List.of(), asientos, new BigDecimal("60.00"), "PROGRAMADO",
                 reservable ? "DISPONIBLE" : "NO_DISPONIBLE", reservable,
-                PoliticaReservaViaje.aEpochMs(salida), 0L, 0L, 20);
+                PoliticaReservaViaje.aEpochMs(salida), 0L, 0L, 20, asientos, null, null, null);
     }
 
     ConsultaPostergacionDto consultar() {

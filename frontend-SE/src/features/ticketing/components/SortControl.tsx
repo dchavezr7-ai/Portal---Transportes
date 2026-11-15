@@ -9,17 +9,6 @@ interface SortControlProps {
   className?: string
 }
 
-/**
- * Selector de orden: tres criterios (Hora de salida · Disponibilidad · Precio),
- * cada uno con un botón pequeño que alterna ascendente/descendente. La
- * dirección se comunica únicamente con la flecha (↑ / ↓), sin textos como
- * "más próxima" o "menor precio"; el significado de cada dirección vive en el
- * `aria-label` para lectores de pantalla.
- *
- *  - Pulsar el nombre de un criterio lo activa (ascendente).
- *  - Pulsar su flecha alterna la dirección; si el criterio no estaba activo,
- *    lo activa con la dirección contraria a la mostrada (ascendente).
- */
 export function SortControl({ orden, onOrden, className }: SortControlProps) {
   const { criterio: activo, direccion } = descomponerOrden(orden)
 

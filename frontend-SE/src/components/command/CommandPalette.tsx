@@ -8,7 +8,6 @@ import {
   SearchX,
   Ticket,
   UserRoundSearch,
-  Route,
 } from 'lucide-react'
 import { hasPermission, useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -71,9 +70,8 @@ function PaletaAbierta() {
     const icono = 'h-4 w-4'
     return [
       { id: 'registrar', titulo: 'Registrar pasaje', descripcion: 'Iniciar una venta de pasaje', icono: <Ticket className={icono} />, claves: 'venta vender nuevo boleto', permiso: 'pasajes:registrar', ejecutar: ir('registrar-pasaje') },
-      { id: 'disponibilidad', titulo: 'Consultar disponibilidad', descripcion: 'Buscar viajes y asientos libres', icono: <Route className={icono} />, claves: 'viajes horarios asientos buscar', permiso: 'pasajes:registrar', ejecutar: () => { setActiveSection('viajes'); window.setTimeout(() => document.getElementById('consulta-origen')?.focus(), 60) } },
       { id: 'ventas', titulo: 'Ver ventas', descripcion: 'Ingresos y ocupación en el Dashboard', icono: <LayoutDashboard className={icono} />, claves: 'ingresos dashboard kpi', permiso: 'dashboard:ver', ejecutar: ir('dashboard') },
-      { id: 'pasajero', titulo: 'Buscar pasajero', descripcion: 'Por documento o nombre', icono: <UserRoundSearch className={icono} />, claves: 'cliente dni documento', pronto: true },
+      { id: 'pasajero', titulo: 'Buscar pasajero', descripcion: 'Por documento o nombre', icono: <UserRoundSearch className={icono} />, claves: 'cliente dni documento', permiso: 'pasajes:registrar', ejecutar: ir('clientes') },
       { id: 'viaje', titulo: 'Consultar viaje', descripcion: 'Estado y manifiesto de un viaje', icono: <BookOpenCheck className={icono} />, claves: 'manifiesto codigo', pronto: true },
     ].filter((c) => hasPermission(user, c.permiso))
   }, [setActiveSection, user])

@@ -1,9 +1,7 @@
-import type { DatosPago, MetodoPago } from '@/types/pago'
-import type { DatosPasajero, TipoDocumento } from '@/types/pasajero'
-import type { PagoForm, PasajeroForm } from '../types'
+import type { TipoDocumento } from '@/types/pasajero'
+import type { PasajeroForm } from '../types'
 
 export type ErroresPasajero = Partial<Record<keyof PasajeroForm, string>>
-export type ErroresPago = Partial<Record<'metodoPagoId' | 'montoRecibido' | 'referencia', string>>
 
 export const tiposDocumento: { value: TipoDocumento; label: string }[] = [
   { value: 'DNI', label: 'DNI' },
@@ -28,9 +26,7 @@ export function longitudMaximaDocumento(tipo: TipoDocumento): number {
 const REGEX_NOMBRE = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' -]{2,60}$/
 const REGEX_TELEFONO = /^9\d{8}$/
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const REGEX_REFERENCIA = /^[A-Za-z0-9-]{6,20}$/
 
-/** Todos los campos son obligatorios salvo el correo. */
 export function validarPasajero(f: PasajeroForm): ErroresPasajero {
   const errores: ErroresPasajero = {}
   const doc = f.numeroDocumento.trim()
@@ -49,57 +45,6 @@ export function validarPasajero(f: PasajeroForm): ErroresPasajero {
   return errores
 }
 
-/** Convierte el texto del formulario en número; `NaN` si no es válido. */
-export function parsearMonto(texto: string): number {
-  const limpio = texto.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(limpio)) return Number.NaN
-  return Number(limpio)
-}
-
-/** Efectivo: el monto recibido cubre el total. Pagos digitales: requieren referencia. */
-export function validarPago(f: PagoForm, metodo: MetodoPago | undefined, total: number): ErroresPago {
-  const errores: ErroresPago = {}
-  if (!metodo) {
-    errores.metodoPagoId = 'Selecciona un método de pago.'
-    return errores
-  }
-  if (metodo.id === 'efectivo') {
-    const recibido = parsearMonto(f.montoRecibido)
-    if (!f.montoRecibido.trim()) errores.montoRecibido = 'Ingresa el monto recibido.'
-    else if (Number.isNaN(recibido) || recibido <= 0) errores.montoRecibido = 'Ingresa un monto válido (máx. 2 decimales).'
-    else if (recibido < total) errores.montoRecibido = 'El monto recibido no cubre el total del pasaje.'
-  }
-  if (metodo.requiereReferencia) {
-    const ref = f.referencia.trim()
-    const etiqueta = metodo.etiquetaReferencia ?? 'Código de referencia'
-    if (!ref) errores.referencia = `Ingresa el ${etiqueta.toLowerCase()}.`
-    else if (!REGEX_REFERENCIA.test(ref)) errores.referencia = 'Usa entre 6 y 20 letras, números o guiones.'
-  }
-  return errores
-}
-
-export function aDatosPasajero(f: PasajeroForm): DatosPasajero {
-  const email = f.email.trim()
-  return {
-    tipoDocumento: f.tipoDocumento,
-    numeroDocumento: f.numeroDocumento.trim().toUpperCase(),
-    nombres: f.nombres.trim(),
-    apellidos: f.apellidos.trim(),
-    telefono: f.telefono.trim(),
-    email: email || undefined,
-  }
-}
-
-export function aDatosPago(f: PagoForm, metodo: MetodoPago, total: number): DatosPago {
-  return {
-    metodoPagoId: metodo.id,
-    monto: total,
-    montoRecibido: metodo.id === 'efectivo' ? parsearMonto(f.montoRecibido) : undefined,
-    referencia: metodo.requiereReferencia ? f.referencia.trim() : undefined,
-  }
-}
-
-/** Lleva el foco al primer campo con error (patrón de formularios del sistema). */
 export function enfocarPrimerError(ids: string[]) {
   window.requestAnimationFrame(() => {
     for (const id of ids) {

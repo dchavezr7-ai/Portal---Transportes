@@ -1,180 +1,246 @@
 import { create } from 'zustand'
-import { FECHA_REFERENCIA } from '@/config/referencia'
-import type { ComprobanteOperacion } from '@/types/pasaje'
-import type { ViajeListado } from '@/types/viaje'
+import { consultaViajesService } from '@/services'
+import { esApiError } from '@/services/api/httpClient'
+import { useToastStore } from '@/stores/toastStore'
+import type { AsientoConsulta, SesionReserva, ViajeConsulta } from '@/types/consultaViaje'
+import { fechaHoyLima } from '@/utils/fechas'
 import { validarPasajero } from '../utils/validaciones'
 import {
-  DESTINO_PREDETERMINADO,
   MAX_ASIENTOS,
-  ORIGEN_PREDETERMINADO,
-  pasajeroFormVacio,
+  MINUTOS_BLOQUEO,
   PASOS,
-  type FiltrosViajeForm,
-  type PagoForm,
-  type PasajeroForm,
+  pasajeroFormVacio,
   vistaViajesInicial,
+  type AsientoElegido,
+  type FiltrosViajeForm,
+  type PasajeroForm,
   type PasoId,
   type VistaViajes,
 } from '../types'
 
-const filtrosIniciales: FiltrosViajeForm = {
-  origen: ORIGEN_PREDETERMINADO,
-  destino: DESTINO_PREDETERMINADO,
-  fecha: FECHA_REFERENCIA,
-  servicioId: '',
-}
-const pagoInicial: PagoForm = { metodoPagoId: '', montoRecibido: '', referencia: '' }
+const filtrosIniciales = (): FiltrosViajeForm => ({ origen: '', destino: '', fecha: fechaHoyLima() })
 
-/** Un asiento "tiene datos" cuando algún campo (salvo el tipo de documento, que trae valor por defecto) fue tocado. */
+const estadoInicial = () => ({
+  paso: 'viaje' as PasoId,
+  filtros: filtrosIniciales(),
+  vista: vistaViajesInicial,
+  viaje: null as ViajeConsulta | null,
+  sesion: null as SesionReserva | null,
+  asientos: [] as AsientoElegido[],
+  procesando: null as number | null,
+  asientoActivo: null as number | null,
+  pasajerosPorAsiento: {} as Record<number, PasajeroForm>,
+})
+
+const mensajeDe = (e: unknown, defecto: string) => (esApiError(e) ? e.message : defecto)
+
+function liberarEnServidor(idViaje: number, tokenSesion: string | undefined) {
+  if (!tokenSesion) return
+  void consultaViajesService.liberarSesion(idViaje, tokenSesion).catch(() => undefined)
+}
+
+interface WizardState extends ReturnType<typeof estadoInicial> {
+  setFiltros: (parcial: Partial<FiltrosViajeForm>) => void
+  setVista: (parcial: Partial<VistaViajes>) => void
+  restablecerFiltros: () => void
+  seleccionarViaje: (viaje: ViajeConsulta) => void
+  alternarAsiento: (asiento: AsientoConsulta) => Promise<void>
+  liberadoPorServidor: (idAsiento: number) => void
+  vencerSesion: () => void
+  setAsientoActivo: (idAsiento: number | null) => void
+  setDatosPasajero: (idAsiento: number, parcial: Partial<PasajeroForm>) => void
+  irA: (paso: PasoId) => void
+  volverABuscar: () => void
+  cancelarRegistro: () => void
+}
+
+export const useTicketWizardStore = create<WizardState>()((set, get) => {
+  const notificar = useToastStore.getState().push
+
+  function vaciarSeleccion() {
+    set({ sesion: null, asientos: [], asientoActivo: null, pasajerosPorAsiento: {}, procesando: null })
+  }
+
+  return {
+    ...estadoInicial(),
+
+    setFiltros: (parcial) => set({ filtros: { ...get().filtros, ...parcial } }),
+    setVista: (parcial) => set({ vista: { ...get().vista, ...parcial } }),
+    restablecerFiltros: () => set({ filtros: filtrosIniciales(), vista: vistaViajesInicial }),
+
+    seleccionarViaje: (viaje) => {
+      const { viaje: actual, sesion } = get()
+      if (actual && actual.id !== viaje.id) {
+        liberarEnServidor(actual.id, sesion?.tokenSesion)
+        vaciarSeleccion()
+      }
+      set({ viaje })
+    },
+
+    alternarAsiento: async (asiento) => {
+      const inicio = get()
+      const viaje = inicio.viaje
+      if (!viaje || inicio.procesando !== null) return
+      const elegido = inicio.asientos.find((a) => a.idAsiento === asiento.idAsiento)
+
+      if (elegido) {
+        set({ procesando: asiento.idAsiento })
+        try {
+          if (inicio.sesion) await consultaViajesService.liberarAsiento(viaje.id, asiento.idAsiento, inicio.sesion.tokenSesion)
+        } catch (e) {
+          set({ procesando: null })
+          notificar({ tone: 'danger', title: 'No se pudo liberar el asiento', description: mensajeDe(e, 'Inténtalo de nuevo.') })
+          return
+        }
+        const actual = get()
+        const asientos = actual.asientos.filter((a) => a.idAsiento !== asiento.idAsiento)
+        const pasajerosPorAsiento = { ...actual.pasajerosPorAsiento }
+        delete pasajerosPorAsiento[asiento.idAsiento]
+        if (asientos.length === 0) {
+          liberarEnServidor(viaje.id, actual.sesion?.tokenSesion)
+          vaciarSeleccion()
+          return
+        }
+        set({
+          asientos,
+          pasajerosPorAsiento,
+          procesando: null,
+          asientoActivo: actual.asientoActivo === asiento.idAsiento ? asientos[0].idAsiento : actual.asientoActivo,
+        })
+        return
+      }
+
+      if (inicio.asientos.length >= MAX_ASIENTOS) {
+        notificar({
+          tone: 'info',
+          title: 'Máximo de asientos alcanzado',
+          description: `Solo puedes seleccionar ${MAX_ASIENTOS} asientos por registro.`,
+        })
+        return
+      }
+
+      set({ procesando: asiento.idAsiento })
+      let sesion = inicio.sesion
+      const sesionNueva = sesion === null
+      try {
+        if (!sesion) sesion = await consultaViajesService.crearSesion(viaje.id, MINUTOS_BLOQUEO)
+        await consultaViajesService.bloquearAsiento(viaje.id, asiento.idAsiento, sesion.tokenSesion)
+      } catch (e) {
+        if (sesionNueva) liberarEnServidor(viaje.id, sesion?.tokenSesion)
+        set({ procesando: null })
+        notificar({
+          tone: 'danger',
+          title: 'No se pudo seleccionar el asiento',
+          description: mensajeDe(e, 'Otra sesión pudo haberlo tomado. Elige otro asiento.'),
+        })
+        return
+      }
+
+      const actual = get()
+      if (actual.viaje?.id !== viaje.id) {
+        liberarEnServidor(viaje.id, sesion.tokenSesion)
+        return
+      }
+      const nuevo: AsientoElegido = {
+        idAsiento: asiento.idAsiento,
+        numero: asiento.numero,
+        piso: asiento.piso,
+        precio: asiento.precio ?? viaje.precio ?? 0,
+      }
+      set({
+        sesion: actual.sesion ?? sesion,
+        asientos: [...actual.asientos, nuevo],
+        asientoActivo: actual.asientoActivo ?? nuevo.idAsiento,
+        pasajerosPorAsiento: { ...actual.pasajerosPorAsiento, [nuevo.idAsiento]: { ...pasajeroFormVacio } },
+        procesando: null,
+      })
+    },
+
+    liberadoPorServidor: (idAsiento) => {
+      const actual = get()
+      if (actual.procesando === idAsiento || !actual.asientos.some((a) => a.idAsiento === idAsiento)) return
+      const asientos = actual.asientos.filter((a) => a.idAsiento !== idAsiento)
+      const pasajerosPorAsiento = { ...actual.pasajerosPorAsiento }
+      delete pasajerosPorAsiento[idAsiento]
+      notificar({ tone: 'info', title: 'Un asiento seleccionado fue liberado', description: 'Su reserva temporal ya no está vigente.' })
+      if (asientos.length === 0) {
+        set({ sesion: null, asientos: [], asientoActivo: null, pasajerosPorAsiento: {}, paso: actual.paso === 'pasajeros' ? 'asientos' : actual.paso })
+        return
+      }
+      set({
+        asientos,
+        pasajerosPorAsiento,
+        asientoActivo: actual.asientoActivo === idAsiento ? asientos[0].idAsiento : actual.asientoActivo,
+      })
+    },
+
+    vencerSesion: () => {
+      const actual = get()
+      if (!actual.sesion) return
+      if (actual.viaje) liberarEnServidor(actual.viaje.id, actual.sesion.tokenSesion)
+      set({
+        sesion: null,
+        asientos: [],
+        asientoActivo: null,
+        pasajerosPorAsiento: {},
+        procesando: null,
+        paso: actual.paso === 'pasajeros' ? 'asientos' : actual.paso,
+      })
+      notificar({
+        tone: 'danger',
+        title: 'Tu reserva temporal venció',
+        description: 'Los asientos fueron liberados. Vuelve a seleccionarlos para continuar.',
+      })
+    },
+
+    setAsientoActivo: (idAsiento) => set({ asientoActivo: idAsiento }),
+
+    setDatosPasajero: (idAsiento, parcial) => {
+      const actual = get()
+      const previo = actual.pasajerosPorAsiento[idAsiento] ?? { ...pasajeroFormVacio }
+      set({ pasajerosPorAsiento: { ...actual.pasajerosPorAsiento, [idAsiento]: { ...previo, ...parcial } } })
+    },
+
+    irA: (paso) => set({ paso }),
+
+    volverABuscar: () => {
+      const { viaje, sesion } = get()
+      if (viaje) liberarEnServidor(viaje.id, sesion?.tokenSesion)
+      vaciarSeleccion()
+      set({ paso: 'viaje' })
+    },
+
+    cancelarRegistro: () => {
+      const { viaje, sesion } = get()
+      if (viaje) liberarEnServidor(viaje.id, sesion?.tokenSesion)
+      set(estadoInicial())
+    },
+  }
+})
+
 function tieneDatosForm(form: PasajeroForm | undefined): boolean {
   if (!form) return false
   return Object.entries(form).some(([campo, valor]) => campo !== 'tipoDocumento' && valor !== '')
 }
 
-interface WizardState {
-  paso: PasoId
-  filtros: FiltrosViajeForm
-  /** Franjas de horario y orden de la lista de viajes. */
-  vista: VistaViajes
-  viaje: ViajeListado | null
-  /** Asientos seleccionados, en el orden en que se eligieron (máx. `MAX_ASIENTOS`). */
-  asientos: number[]
-  /** Asiento cuyo formulario se muestra en el paso "Pasajeros". */
-  asientoActivo: number | null
-  /** Datos de pasajero por número de asiento. Independientes entre sí: cambiar de asiento activo nunca los mezcla. */
-  pasajerosPorAsiento: Record<number, PasajeroForm>
-  pago: PagoForm
-  comprobante: ComprobanteOperacion | null
-
-  setFiltros: (parcial: Partial<FiltrosViajeForm>) => void
-  setVista: (parcial: Partial<VistaViajes>) => void
-  /** Restablece filtros de búsqueda y de vista (no toca el viaje ya elegido). */
-  restablecerFiltros: () => void
-  seleccionarViaje: (viaje: ViajeListado) => void
-  /** `true` si el asiento tiene datos de pasajero ingresados (para pedir confirmación antes de quitarlo). */
-  tieneDatosAsiento: (numero: number) => boolean
-  /** Agrega un asiento a la selección. No hace nada si ya está o si se alcanzó el máximo. */
-  agregarAsiento: (numero: number) => void
-  /** Quita un asiento de la selección y descarta los datos de su pasajero. */
-  quitarAsiento: (numero: number) => void
-  setAsientoActivo: (numero: number | null) => void
-  setDatosPasajero: (numero: number, parcial: Partial<PasajeroForm>) => void
-  setPago: (parcial: Partial<PagoForm>) => void
-  irA: (paso: PasoId) => void
-  confirmar: (comprobante: ComprobanteOperacion) => void
-  reiniciar: () => void
-}
-
-/**
- * Estado del asistente "Registrar pasaje". Vive en memoria (sin `persist`) y
- * no usa rutas: los pasos son estado. Está en un store —y no en un
- * `useState` de la sección— para que cambiar a otra sección del menú no
- * descarte los datos ingresados.
- *
- * Soporta de 1 a `MAX_ASIENTOS` asientos por operación: cada asiento
- * seleccionado tiene su propio formulario de pasajero en
- * `pasajerosPorAsiento`, independiente del resto.
- */
-export const useTicketWizardStore = create<WizardState>()((set, get) => ({
-  paso: 'viaje',
-  filtros: filtrosIniciales,
-  vista: vistaViajesInicial,
-  viaje: null,
-  asientos: [],
-  asientoActivo: null,
-  pasajerosPorAsiento: {},
-  pago: pagoInicial,
-  comprobante: null,
-
-  setFiltros: (parcial) => set({ filtros: { ...get().filtros, ...parcial } }),
-  setVista: (parcial) => set({ vista: { ...get().vista, ...parcial } }),
-  restablecerFiltros: () => set({ filtros: filtrosIniciales, vista: vistaViajesInicial }),
-
-  seleccionarViaje: (viaje) => {
-    const actual = get().viaje
-    // Cambiar de viaje invalida los asientos y el monto ya calculado.
-    if (actual?.id !== viaje.id) {
-      set({ viaje, asientos: [], asientoActivo: null, pasajerosPorAsiento: {}, pago: pagoInicial })
-    } else {
-      set({ viaje })
-    }
-  },
-
-  tieneDatosAsiento: (numero) => tieneDatosForm(get().pasajerosPorAsiento[numero]),
-
-  agregarAsiento: (numero) => {
-    const estado = get()
-    if (estado.asientos.includes(numero) || estado.asientos.length >= MAX_ASIENTOS) return
-    const asientos = [...estado.asientos, numero]
-    set({
-      asientos,
-      asientoActivo: estado.asientoActivo ?? numero,
-      pasajerosPorAsiento: { ...estado.pasajerosPorAsiento, [numero]: { ...pasajeroFormVacio } },
-    })
-  },
-
-  quitarAsiento: (numero) => {
-    const estado = get()
-    const asientos = estado.asientos.filter((a) => a !== numero)
-    const pasajerosPorAsiento = { ...estado.pasajerosPorAsiento }
-    delete pasajerosPorAsiento[numero]
-    const asientoActivo = estado.asientoActivo === numero ? (asientos[0] ?? null) : estado.asientoActivo
-    set({ asientos, pasajerosPorAsiento, asientoActivo })
-  },
-
-  setAsientoActivo: (numero) => set({ asientoActivo: numero }),
-
-  setDatosPasajero: (numero, parcial) => {
-    const estado = get()
-    const actual = estado.pasajerosPorAsiento[numero] ?? { ...pasajeroFormVacio }
-    set({ pasajerosPorAsiento: { ...estado.pasajerosPorAsiento, [numero]: { ...actual, ...parcial } } })
-  },
-
-  setPago: (parcial) => set({ pago: { ...get().pago, ...parcial } }),
-  irA: (paso) => set({ paso }),
-  confirmar: (comprobante) => set({ comprobante, paso: 'confirmacion' }),
-  reiniciar: () =>
-    set({
-      paso: 'viaje',
-      filtros: filtrosIniciales,
-      vista: vistaViajesInicial,
-      viaje: null,
-      asientos: [],
-      asientoActivo: null,
-      pasajerosPorAsiento: {},
-      pago: pagoInicial,
-      comprobante: null,
-    }),
-}))
-
-/** Estado del asistente más valores derivados (total, progreso de pasajeros, si hay datos sin guardar). */
 export function useTicketWizard() {
   const estado = useTicketWizardStore()
   const pasoIndex = PASOS.findIndex((p) => p.id === estado.paso)
   const cantidadPasajes = estado.asientos.length
-  const total = (estado.viaje?.tarifa ?? 0) * cantidadPasajes
-
+  const total = estado.asientos.reduce((suma, a) => suma + a.precio, 0)
   const completos = estado.asientos.filter(
-    (numero) => Object.keys(validarPasajero(estado.pasajerosPorAsiento[numero] ?? { ...pasajeroFormVacio })).length === 0,
+    (a) => Object.keys(validarPasajero(estado.pasajerosPorAsiento[a.idAsiento] ?? { ...pasajeroFormVacio })).length === 0,
   )
-  const cantidadCompletados = completos.length
-  const todosPasajerosCompletos = cantidadPasajes > 0 && cantidadCompletados === cantidadPasajes
-
   const tieneDatos =
-    estado.paso !== 'confirmacion' &&
-    (estado.viaje !== null ||
-      estado.asientos.length > 0 ||
-      Object.values(estado.pasajerosPorAsiento).some(tieneDatosForm) ||
-      estado.pago.metodoPagoId !== '')
+    estado.viaje !== null || estado.asientos.length > 0 || Object.values(estado.pasajerosPorAsiento).some(tieneDatosForm)
 
   return {
     ...estado,
     pasoIndex,
     total,
     cantidadPasajes,
-    cantidadCompletados,
-    todosPasajerosCompletos,
-    esAsientoCompleto: (numero: number) => completos.includes(numero),
+    cantidadCompletados: completos.length,
+    esAsientoCompleto: (idAsiento: number) => completos.some((a) => a.idAsiento === idAsiento),
     tieneDatos,
   }
 }

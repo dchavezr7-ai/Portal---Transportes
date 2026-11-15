@@ -2,10 +2,9 @@ import { Clock, Moon, Sun, Sunrise, Sunset } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/utils/cn'
 import { FRANJAS } from '../utils/viajes'
-import type { FranjaId } from '../types'
+import type { FranjaId } from '@/types/consultaViaje'
 
 interface ScheduleFilterProps {
-  /** Franjas activas. Vacío = sin filtro de horario. */
   franjas: FranjaId[]
   onChange: (franjas: FranjaId[]) => void
   disabled?: boolean
@@ -18,12 +17,6 @@ const iconos: Record<FranjaId, ReactNode> = {
   noche: <Sunset className="h-3.5 w-3.5" aria-hidden="true" />,
 }
 
-/**
- * Horario de salida: cuatro franjas (Madrugada · Mañana · Tarde · Noche) que
- * se activan y desactivan al hacer clic. Sin ninguna activa se muestran todos
- * los horarios, por eso no existe una opción "Todos" ni un rango libre.
- * El rango horario de cada franja se ve en el tooltip.
- */
 export function ScheduleFilter({ franjas, onChange, disabled }: ScheduleFilterProps) {
   function alternar(id: FranjaId) {
     onChange(franjas.includes(id) ? franjas.filter((f) => f !== id) : [...franjas, id])

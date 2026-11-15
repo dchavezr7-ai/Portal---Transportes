@@ -10,11 +10,6 @@ interface PassengerTicketCardProps {
   onClick: () => void
 }
 
-/**
- * Ticket horizontal de un pasajero/asiento (paso "Pasajeros"). Hace clic
- * para editar sus datos; el activo se distingue con el mismo lenguaje de
- * "indicador de selección" que el resto del sistema (borde + acento).
- */
 export function PassengerTicketCard({
   indice,
   codigoAsiento,

@@ -5,7 +5,6 @@ import { nivelDisponibilidad, type NivelDisponibilidad } from '../utils/viajes'
 interface AvailabilityIndicatorProps {
   libres: number
   capacidad: number
-  /** `true` cuando el viaje no se puede vender por otra razón (cancelado, ya salió): se muestra como no disponible. */
   bloqueado?: boolean
   className?: string
 }
@@ -17,11 +16,6 @@ const estilos: Record<NivelDisponibilidad, { barra: string; chip: string }> = {
   agotado: { barra: 'bg-text-400', chip: 'bg-text-400/12 text-text-500' },
 }
 
-/**
- * Disponibilidad de un viaje: cifra "libres / capacidad", barra proporcional y
- * un estado en texto + icono. El color refuerza el nivel pero nunca lo comunica
- * solo: cada nivel tiene su propia etiqueta y forma de icono.
- */
 export function AvailabilityIndicator({ libres, capacidad, bloqueado, className }: AvailabilityIndicatorProps) {
   const nivel: NivelDisponibilidad = bloqueado ? 'agotado' : nivelDisponibilidad(libres)
   const e = estilos[nivel]
@@ -56,14 +50,8 @@ export function AvailabilityIndicator({ libres, capacidad, bloqueado, className 
           <span className="text-sm font-semibold tabular-nums text-text-900">{libres}</span>
           <span className="tabular-nums"> / {capacidad}</span> asientos disponibles
         </p>
-        {/* Con disponibilidad alta la cifra y la barra ya lo dicen todo: el chip solo aparece ante un aviso. */}
         {etiqueta && (
-          <span
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',
-              e.chip,
-            )}
-          >
+          <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium', e.chip)}>
             {icono}
             {etiqueta}
           </span>

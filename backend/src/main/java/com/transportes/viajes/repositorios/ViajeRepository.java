@@ -7,7 +7,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import com.transportes.viajes.reglas.FranjaHorario;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -31,7 +36,8 @@ public class ViajeRepository {
         SELECT v.id_viaje, uo.nombre AS origen, ud.nombre AS destino,
                v.fecha_salida, v.hora_salida, r.duracion_estimada_min,
                v.estado_viaje, tb.nombre_tipo, COALESCE(a.total, 0) AS total_asientos,
-               COALESCE(a.disponibles, 0) AS disponibles, a.precio, COALESCE(s.servicios, '') AS servicios
+               COALESCE(a.disponibles, 0) AS disponibles, a.precio, COALESCE(s.servicios, '') AS servicios,
+               uo.distrito AS terminal_origen, ud.distrito AS terminal_destino
         FROM viaje v
         JOIN programacion_viaje pv ON pv.id_programacion = v.id_programacion
         JOIN ruta r ON r.id_ruta = pv.id_ruta
@@ -58,35 +64,69 @@ public class ViajeRepository {
           AND v.fecha_salida = :fecha AND v.estado_viaje = 'PROGRAMADO'
           AND pv.activa AND r.activa AND ao.activa AND ad.activa
           AND uo.activa AND ud.activa AND b.activo
-          AND EXTRACT(HOUR FROM v.hora_salida) >= :horaDesde
-          AND EXTRACT(HOUR FROM v.hora_salida) < :horaHasta
+          AND %s
         ORDER BY v.hora_salida, v.id_viaje
+        """;
+
+    private static final String CONDICION_HORAS = """
+        EXTRACT(HOUR FROM v.hora_salida) >= :horaDesde
+          AND EXTRACT(HOUR FROM v.hora_salida) < :horaHasta
         """;
 
     public List<ViajeResumenDto> buscar(String origen, String destino, LocalDate fecha, int desde, int hasta,
             LocalDateTime ahora) {
-        return jdbc.query(BUSQUEDA, Map.of("origen", origen, "destino", destino,
-                "fecha", fecha, "horaDesde", desde, "horaHasta", hasta), (rs, fila) -> {
-            LocalDate salida = rs.getObject("fecha_salida", LocalDate.class);
-            LocalTime hora = rs.getObject("hora_salida", LocalTime.class);
-            Integer minutos = rs.getObject("duracion_estimada_min", Integer.class);
-            var llegada = minutos == null ? null : salida.atTime(hora).plusMinutes(minutos);
-            String duracion = minutos == null ? "Por confirmar" : minutos / 60 + " h"
-                    + (minutos % 60 == 0 ? "" : " " + minutos % 60 + " min");
-            int disponibles = rs.getInt("disponibles");
-            EstadoReserva reserva = PoliticaReservaViaje.evaluar(rs.getString("estado_viaje"), salida, hora,
-                    rs.getInt("total_asientos"), disponibles, ahora);
-            return new ViajeResumenDto(rs.getLong("id_viaje"), "RutaLibre",
-                    rs.getString("origen"), rs.getString("destino"), salida, hora.format(HORA),
-                    llegada == null ? null : llegada.format(HORA), llegada == null ? null : llegada.toLocalDate(),
-                    duracion, rs.getString("nombre_tipo"),
-                    Arrays.stream(rs.getString("servicios").split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList(),
-                    disponibles, rs.getBigDecimal("precio"),
-                    disponibles == 0 ? "agotado" : disponibles <= 4 ? "pocos-asientos" : "disponible",
-                    reserva.name(), reserva.reservable(),
-                    PoliticaReservaViaje.aEpochMs(salida.atTime(hora)),
-                    PoliticaReservaViaje.aEpochMs(PoliticaReservaViaje.limiteReserva(salida, hora)),
-                    PoliticaReservaViaje.aEpochMs(ahora), PoliticaReservaViaje.MINUTOS_ANTICIPACION);
-        });
+        Map<String, Object> parametros = new HashMap<>();
+        parametros.put("origen", origen);
+        parametros.put("destino", destino);
+        parametros.put("fecha", fecha);
+        parametros.put("horaDesde", desde);
+        parametros.put("horaHasta", hasta);
+        return jdbc.query(BUSQUEDA.formatted(CONDICION_HORAS), parametros, (rs, fila) -> mapear(rs, ahora));
+    }
+
+    public List<ViajeResumenDto> buscarPorFranjas(String origen, String destino, LocalDate fecha,
+            List<FranjaHorario> franjas, LocalDateTime ahora) {
+        Map<String, Object> parametros = new HashMap<>();
+        parametros.put("origen", origen);
+        parametros.put("destino", destino);
+        parametros.put("fecha", fecha);
+        List<String> condiciones = new ArrayList<>();
+        for (int i = 0; i < franjas.size(); i++) {
+            condiciones.add("(EXTRACT(HOUR FROM v.hora_salida) * 60 + EXTRACT(MINUTE FROM v.hora_salida) >= :desde" + i
+                    + " AND EXTRACT(HOUR FROM v.hora_salida) * 60 + EXTRACT(MINUTE FROM v.hora_salida) < :hasta" + i + ")");
+            parametros.put("desde" + i, franjas.get(i).desdeMinuto());
+            parametros.put("hasta" + i, franjas.get(i).hastaMinuto());
+        }
+        String condicion = condiciones.isEmpty() ? "TRUE" : "(" + String.join(" OR ", condiciones) + ")";
+        return jdbc.query(BUSQUEDA.formatted(condicion), parametros, (rs, fila) -> mapear(rs, ahora));
+    }
+
+    private ViajeResumenDto mapear(ResultSet rs, LocalDateTime ahora) throws SQLException {
+        LocalDate salida = rs.getObject("fecha_salida", LocalDate.class);
+        LocalTime hora = rs.getObject("hora_salida", LocalTime.class);
+        Integer minutos = rs.getObject("duracion_estimada_min", Integer.class);
+        var llegada = minutos == null ? null : salida.atTime(hora).plusMinutes(minutos);
+        String duracion = minutos == null ? "Por confirmar" : minutos / 60 + " h"
+                + (minutos % 60 == 0 ? "" : " " + minutos % 60 + " min");
+        int disponibles = rs.getInt("disponibles");
+        int total = rs.getInt("total_asientos");
+        EstadoReserva reserva = PoliticaReservaViaje.evaluar(rs.getString("estado_viaje"), salida, hora,
+                total, disponibles, ahora);
+        return new ViajeResumenDto(rs.getLong("id_viaje"), "RutaLibre",
+                rs.getString("origen"), rs.getString("destino"), salida, hora.format(HORA),
+                llegada == null ? null : llegada.format(HORA), llegada == null ? null : llegada.toLocalDate(),
+                duracion, rs.getString("nombre_tipo"),
+                Arrays.stream(rs.getString("servicios").split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList(),
+                disponibles, rs.getBigDecimal("precio"),
+                disponibles == 0 ? "agotado" : disponibles <= 4 ? "pocos-asientos" : "disponible",
+                reserva.name(), reserva.reservable(),
+                PoliticaReservaViaje.aEpochMs(salida.atTime(hora)),
+                PoliticaReservaViaje.aEpochMs(PoliticaReservaViaje.limiteReserva(salida, hora)),
+                PoliticaReservaViaje.aEpochMs(ahora), PoliticaReservaViaje.MINUTOS_ANTICIPACION,
+                total, limpiar(rs.getString("terminal_origen")), limpiar(rs.getString("terminal_destino")), minutos);
+    }
+
+    private static String limpiar(String valor) {
+        return valor == null || valor.isBlank() ? null : valor.trim();
     }
 }

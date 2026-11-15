@@ -1,23 +1,8 @@
 import { TIMEOUT_API_MS, URL_BASE_API } from '@/config/api'
 
-/**
- * Cliente HTTP reutilizable (fetch) para hablar con el backend real.
- *
- * Replica el patrón del Portal (`httpCliente.js`): URL base centralizada,
- * `Authorization: Bearer` opcional y errores normalizados. Queda PREPARADO y
- * DISPONIBLE, pero ningún servicio ni componente lo usa todavía: los
- * contratos de `services/contracts.ts` siguen resueltos por los mock.
- *
- * Los únicos encabezados que el backend acepta en CORS son `Authorization`,
- * `Content-Type` y `X-Token-Consulta`; no enviar otros desde el navegador.
- */
-
-/** Error de comunicación con la API (red, timeout o respuesta HTTP no exitosa). */
 export class ApiError extends Error {
-  /** Código HTTP; `0` si no hubo respuesta (red, CORS o timeout). */
-  readonly status: number
-  /** `true` cuando no hubo respuesta: el resultado en el servidor es desconocido. */
-  readonly sinRespuesta: boolean
+    readonly status: number
+    readonly sinRespuesta: boolean
   readonly detalles: unknown
 
   constructor(message: string, status: number, sinRespuesta = false, detalles: unknown = null) {
@@ -34,20 +19,15 @@ export function esApiError(error: unknown): error is ApiError {
 }
 
 type ProveedorToken = () => string | null
-
-// Por defecto no se envía token: el SE todavía usa autenticación mock.
 let proveedorToken: ProveedorToken = () => null
 
-/** Registra de dónde leer el JWT cuando el SE se autentique contra el backend. */
 export function configurarProveedorToken(proveedor: ProveedorToken): void {
   proveedorToken = proveedor
 }
 
 export interface OpcionesApi extends Omit<RequestInit, 'body'> {
-  /** Objeto serializable a JSON; se envía con `Content-Type: application/json`. */
-  body?: unknown
-  /** Adjunta el JWT si existe (por defecto `true`). */
-  autenticar?: boolean
+    body?: unknown
+    autenticar?: boolean
   timeoutMs?: number
 }
 

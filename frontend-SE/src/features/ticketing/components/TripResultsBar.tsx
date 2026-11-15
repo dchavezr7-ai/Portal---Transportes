@@ -11,7 +11,6 @@ interface TripResultsBarProps {
   onReset: () => void
 }
 
-/** Barra ligera sobre la lista: cuántos viajes hay, cómo se ordenan y cómo volver a la búsqueda inicial. No filtra. */
 export function TripResultsBar({ total, orden, hayFiltros, onOrden, onReset }: TripResultsBarProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

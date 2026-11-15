@@ -6,27 +6,15 @@ import type {
   MapaAsientosConsulta,
   PisoConsulta,
   RutaCiudad,
+  SesionReserva,
   ViajeConsulta,
 } from '@/types/consultaViaje'
 import type { ConsultaViajesService } from '../contracts'
 import { ApiError, solicitarApi } from './httpClient'
 
-/**
- * Implementación REAL de `ConsultaViajesService`. Usa los mismos endpoints
- * públicos que el Portal (no se creó ni modificó ningún endpoint):
- *
- *   GET /api/rutas-ciudad
- *   GET /api/viajes/buscar?origen&destino&fecha&horario
- *   GET /api/viajes/{id}/asientos
- *   GET /api/viajes/{id}/asientos/eventos   (SSE)
- *
- * Ninguno requiere JWT, por eso todas las llamadas van con `autenticar: false`.
- */
-
 const ESTADOS_ASIENTO: readonly EstadoAsiento[] = ['disponible', 'bloqueado', 'ocupado']
 
 function aEstadoAsiento(valor: unknown): EstadoAsiento {
-  // Igual que el backend (`mapearEstado`): todo lo que no es libre ni bloqueado se trata como ocupado.
   return ESTADOS_ASIENTO.includes(valor as EstadoAsiento) ? (valor as EstadoAsiento) : 'ocupado'
 }
 
@@ -55,7 +43,11 @@ interface MapaRespuesta {
   mapaPorPiso?: Record<string, PisoRespuesta>
 }
 
-/** Convierte la respuesta del backend (mapa indexado por piso) en una lista ordenada y tipada. */
+interface SesionRespuesta {
+  tokenSesion: string
+  segundosRestantes: number
+}
+
 export function adaptarMapaAsientos(respuesta: MapaRespuesta | null): MapaAsientosConsulta {
   if (!respuesta || typeof respuesta !== 'object') {
     throw new ApiError('El servidor devolvió un mapa de asientos no válido.', 0)
@@ -94,23 +86,56 @@ export const consultaViajesService: ConsultaViajesService = {
     return rutas
   },
 
-  async buscarViajes({ origen, destino, fecha, horario }) {
+  async buscarViajes({ origen, destino, fecha, franjas }) {
     if (!origen.trim() || !destino.trim() || !fecha) {
       throw new ApiError('Origen, destino y fecha son obligatorios.', 400)
     }
-    const parametros = new URLSearchParams({ origen: origen.trim(), destino: destino.trim(), fecha, horario })
+    const parametros = new URLSearchParams({ origen: origen.trim(), destino: destino.trim(), fecha })
+    if (franjas.length > 0) parametros.set('franjas', franjas.join(','))
     const viajes = await solicitarApi<ViajeConsulta[]>(`/api/viajes/buscar?${parametros}`, { autenticar: false })
     if (!Array.isArray(viajes)) throw new ApiError('El servidor devolvió una respuesta de viajes no válida.', 0)
     return viajes
   },
 
-  async obtenerMapaAsientos(idViaje) {
-    const respuesta = await solicitarApi<MapaRespuesta>(`/api/viajes/${idViaje}/asientos`, { autenticar: false })
+  async obtenerMapaAsientos(idViaje, tokenSesion) {
+    const consulta = tokenSesion ? `?tokenSesion=${encodeURIComponent(tokenSesion)}` : ''
+    const respuesta = await solicitarApi<MapaRespuesta>(`/api/viajes/${idViaje}/asientos${consulta}`, { autenticar: false })
     return adaptarMapaAsientos(respuesta)
   },
 
+  async crearSesion(idViaje, minutos): Promise<SesionReserva> {
+    const respuesta = await solicitarApi<SesionRespuesta>(`/api/viajes/${idViaje}/sesiones?minutos=${minutos}`, {
+      method: 'POST',
+      autenticar: false,
+    })
+    return { tokenSesion: respuesta.tokenSesion, expiraEn: Date.now() + respuesta.segundosRestantes * 1000 }
+  },
+
+  async bloquearAsiento(idViaje, idAsiento, tokenSesion) {
+    await solicitarApi(`/api/viajes/${idViaje}/asientos/${idAsiento}/bloquear`, {
+      method: 'POST',
+      autenticar: false,
+      body: { tokenSesion },
+    })
+  },
+
+  async liberarAsiento(idViaje, idAsiento, tokenSesion) {
+    await solicitarApi(`/api/viajes/${idViaje}/asientos/${idAsiento}/liberar`, {
+      method: 'POST',
+      autenticar: false,
+      body: { tokenSesion },
+    })
+  },
+
+  async liberarSesion(idViaje, tokenSesion) {
+    await solicitarApi(`/api/viajes/${idViaje}/sesiones/liberar`, {
+      method: 'POST',
+      autenticar: false,
+      body: { tokenSesion },
+    })
+  },
+
   suscribirAsientos(idViaje, { alAbrir, alError, alAsiento }) {
-    // EventSource no pasa por `solicitarApi`: necesita la URL absoluta.
     const fuente = new EventSource(`${URL_BASE_API}/api/viajes/${idViaje}/asientos/eventos`)
     fuente.onopen = () => alAbrir?.()
     fuente.onerror = () => alError?.()
@@ -120,7 +145,7 @@ export const consultaViajesService: ConsultaViajesService = {
         const parseado: EventoAsiento = { idAsiento: datos.idAsiento, estado: aEstadoAsiento(datos.estado) }
         alAsiento?.(parseado)
       } catch {
-        // evento mal formado: se ignora
+        return
       }
     })
     return () => fuente.close()

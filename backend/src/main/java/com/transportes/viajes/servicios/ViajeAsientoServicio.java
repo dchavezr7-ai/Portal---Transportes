@@ -75,11 +75,15 @@ public class ViajeAsientoServicio {
     }
 
     public SesionReservaResponseDTO crearSesion(Long idViaje) {
+        return crearSesion(idViaje, null);
+    }
+
+    public SesionReservaResponseDTO crearSesion(Long idViaje, Integer minutos) {
         if (!viajeRepositorio.existsById(idViaje)) {
             throw new ViajeNoEncontradoException(idViaje);
         }
         validadorReserva.exigirReservable(idViaje); // no salió y faltan >= 20 min (409 si no)
-        SesionReserva s = tokenSesionServicio.crear(idViaje);
+        SesionReserva s = tokenSesionServicio.crear(idViaje, minutos);
         return new SesionReservaResponseDTO(s.tokenSesion(), s.fechaExpiracion(), s.segundosRestantes());
     }
 
@@ -151,6 +155,24 @@ public class ViajeAsientoServicio {
         }
 
         publicador.publishEvent(new AsientoCambiadoEvento(idViaje, idAsiento, "disponible"));
+    }
+
+    @Transactional
+    public int liberarSesion(Long idViaje, LiberarAsientoRequest request) {
+        SesionReserva sesion = tokenSesionServicio.validar(request.tokenSesion(), idViaje);
+        Integer idViajeInt = Math.toIntExact(idViaje);
+        viajeAsientoRepositorio.bloquearSesion(sesion.idSesion());
+        List<ViajeAsiento> propios = viajeAsientoRepositorio
+                .findByIdViajeAndTokenBloqueoAndEstadoViajeAsiento(idViajeInt, sesion.idSesion(), "BLOQUEADO_TEMPORAL");
+        int liberados = 0;
+        for (ViajeAsiento va : propios) {
+            int filas = viajeAsientoRepositorio.liberarAsientoSiPropio(idViajeInt, va.getIdAsiento(), sesion.idSesion());
+            if (filas > 0) {
+                liberados++;
+                publicador.publishEvent(new AsientoCambiadoEvento(idViaje, va.getIdAsiento(), "disponible"));
+            }
+        }
+        return liberados;
     }
 
     /** Asiento vendido dentro de la transacción de registro de la compra. */

@@ -38,8 +38,16 @@ public class ViajeAsientoControlador {
     }
 
     @PostMapping("/{idViaje}/sesiones")
-    public ResponseEntity<SesionReservaResponseDTO> crearSesion(@PathVariable Long idViaje) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(viajeAsientoServicio.crearSesion(idViaje));
+    public ResponseEntity<SesionReservaResponseDTO> crearSesion(@PathVariable Long idViaje,
+            @RequestParam(required = false) Integer minutos) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(viajeAsientoServicio.crearSesion(idViaje, minutos));
+    }
+
+    @PostMapping("/{idViaje}/sesiones/liberar")
+    public ResponseEntity<Void> liberarSesion(@PathVariable Long idViaje,
+            @RequestBody @Valid LiberarAsientoRequest request) {
+        viajeAsientoServicio.liberarSesion(idViaje, request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{idViaje}/asientos")

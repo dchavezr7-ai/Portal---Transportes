@@ -1,28 +1,32 @@
 import { SearchX } from 'lucide-react'
-import type { KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { Skeleton } from '@/components/feedback/Skeleton'
 import { Button } from '@/components/ui/Button'
-import type { Catalogo } from '@/hooks/useCatalogo'
-import type { ViajeListado } from '@/types/viaje'
+import type { ViajeConsulta } from '@/types/consultaViaje'
+import { calcularDesfaseServidor, estadoReservaActual } from '../utils/viajes'
 import { TravelCard } from './TravelCard'
 
 interface TravelListProps {
-  viajes: ViajeListado[]
+  viajes: ViajeConsulta[]
   cargando: boolean
-  error: boolean
-  catalogo: Catalogo | null
-  seleccionadoId?: string
-  /** Hay filtros aplicados (muestra "Restablecer filtros" en el estado vacío). */
+  error: string | null
+  seleccionadoId?: number
   hayFiltros: boolean
-  onSelect: (v: ViajeListado) => void
+  onSelect: (v: ViajeConsulta) => void
   onReintentar: () => void
   onReset: () => void
 }
 
-/** Lista de tarjetas con sus estados de carga, error y vacío. Flechas ↑/↓ mueven el foco entre las acciones. */
-export function TravelList({ viajes, cargando, error, catalogo, seleccionadoId, hayFiltros, onSelect, onReintentar, onReset }: TravelListProps) {
+export function TravelList({ viajes, cargando, error, seleccionadoId, hayFiltros, onSelect, onReintentar, onReset }: TravelListProps) {
+  const [ahora, setAhora] = useState(() => Date.now())
+
+  useEffect(() => {
+    const temporizador = window.setInterval(() => setAhora(Date.now()), 15_000)
+    return () => window.clearInterval(temporizador)
+  }, [])
+
   function alTeclear(e: KeyboardEvent<HTMLUListElement>) {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     const acciones = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[data-trip-cta]:not(:disabled)'))
@@ -45,9 +49,7 @@ export function TravelList({ viajes, cargando, error, catalogo, seleccionadoId, 
   }
 
   if (error) {
-    return (
-      <ErrorState title="No pudimos cargar los viajes" description="Revisa tu conexión e inténtalo de nuevo." onRetry={onReintentar} />
-    )
+    return <ErrorState title="No pudimos cargar los viajes" description={error} onRetry={onReintentar} />
   }
 
   if (viajes.length === 0) {
@@ -67,31 +69,20 @@ export function TravelList({ viajes, cargando, error, catalogo, seleccionadoId, 
     )
   }
 
-  const terminalDe = (id: string) => catalogo?.agencias.find((a) => a.id === id)?.name
-  const terminalDestinoDe = (ciudad: string) => {
-    const enCiudad = catalogo?.agencias.filter((a) => a.city === ciudad) ?? []
-    return enCiudad.length === 1 ? enCiudad[0].name : undefined
-  }
+  const desfase = calcularDesfaseServidor(viajes, ahora)
 
   return (
     <ul className="flex flex-col gap-3" onKeyDown={alTeclear}>
-      {viajes.map((v, i) => {
-        const servicio = catalogo?.servicios.find((s) => s.id === v.servicioId)
-        return (
-          <li key={v.id} className="animate-fade-slide-up-sm" style={{ animationDelay: `${Math.min(i, 6) * 30}ms` }}>
-            <TravelCard
-              viaje={v}
-              servicioNombre={servicio?.nombre ?? v.servicioId}
-              unidad={servicio?.unidad}
-              duracionMin={catalogo?.rutas.find((r) => r.id === v.rutaId)?.duracionMin}
-              terminalOrigen={terminalDe(v.agenciaId)}
-              terminalDestino={terminalDestinoDe(v.destino)}
-              seleccionado={seleccionadoId === v.id}
-              onSelect={() => onSelect(v)}
-            />
-          </li>
-        )
-      })}
+      {viajes.map((v, i) => (
+        <li key={v.id} className="animate-fade-slide-up-sm" style={{ animationDelay: `${Math.min(i, 6) * 30}ms` }}>
+          <TravelCard
+            viaje={v}
+            estado={estadoReservaActual(v, ahora + desfase)}
+            seleccionado={seleccionadoId === v.id}
+            onSelect={() => onSelect(v)}
+          />
+        </li>
+      ))}
     </ul>
   )
 }

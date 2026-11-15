@@ -1,10 +1,13 @@
 package com.transportes.viajes.servicios;
 
 import com.transportes.viajes.dto.ViajeResumenDto;
+import com.transportes.viajes.reglas.FranjaHorario;
 import com.transportes.viajes.repositorios.ViajeRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
@@ -36,6 +39,23 @@ public class ViajeService {
             default -> throw invalido("Horario no válido. Usa madrugada, mañana, tarde, noche o cualquiera.");
         };
         return viajes.buscar(origen, destino, fecha, horas[0], horas[1], LocalDateTime.now(reloj));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ViajeResumenDto> buscarPorFranjas(String origen, String destino, LocalDate fecha, String franjas) {
+        if (origen == null || origen.isBlank() || destino == null || destino.isBlank() || fecha == null) {
+            throw invalido("Origen, destino y fecha son obligatorios.");
+        }
+        if (origen.trim().equalsIgnoreCase(destino.trim())) throw invalido("El origen y el destino deben ser distintos.");
+        List<FranjaHorario> seleccion = new ArrayList<>();
+        if (franjas != null && !franjas.isBlank()) {
+            for (String id : Arrays.asList(franjas.split(","))) {
+                FranjaHorario franja = FranjaHorario.desdeId(id)
+                        .orElseThrow(() -> invalido("Franja no válida. Usa madrugada, manana, tarde o noche."));
+                if (!seleccion.contains(franja)) seleccion.add(franja);
+            }
+        }
+        return viajes.buscarPorFranjas(origen.trim(), destino.trim(), fecha, seleccion, LocalDateTime.now(reloj));
     }
 
     private ResponseStatusException invalido(String mensaje) {

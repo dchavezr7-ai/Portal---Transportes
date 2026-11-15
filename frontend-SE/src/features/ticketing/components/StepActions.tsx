@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/Button'
 
 interface StepActionsProps {
   onBack?: () => void
-  /** Con `submit`, el botón envía el <form> que lo contiene (Enter funciona) y `onContinue` se ignora. */
   onContinue?: () => void
   submit?: boolean
   continueLabel?: string
@@ -13,7 +12,6 @@ interface StepActionsProps {
   loading?: boolean
 }
 
-/** Barra de acciones al pie de cada paso: volver conserva los datos; continuar solo con el paso válido. */
 export function StepActions({
   onBack,
   onContinue,
