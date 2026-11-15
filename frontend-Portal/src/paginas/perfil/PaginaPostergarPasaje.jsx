@@ -58,7 +58,7 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
     escenario,
     alEscenarioConsumido: consumirEscenarioAsiento,
   })
-  const { fase, viaje, asiento, comparacion, aceptaCondiciones, metodo, procesando, avisoPago, intentos, busqueda, versionMapa, resultado, sesion, sesionVencida } = estado
+  const { fase, viaje, asiento, comparacion, aceptaCondiciones, metodo, procesando, avisoPago, intentos, busqueda, versionMapa, resultado, sesion, sesionVencida, datosPago, erroresPago } = estado
 
   useEffect(() => {
     if (primeraFase.current) {
@@ -203,6 +203,9 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
                 comparacion={comparacion}
                 metodo={metodo}
                 alCambiarMetodo={acciones.cambiarMetodo}
+                datosPago={datosPago}
+                erroresPago={erroresPago}
+                alEditarDato={acciones.editarDatoPago}
                 procesando={procesando}
                 avisoPago={avisoPago}
                 intentos={intentos}

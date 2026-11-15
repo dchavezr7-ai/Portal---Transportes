@@ -1,11 +1,13 @@
 import { formatearPrecio } from '../../utilidades/formato'
 import '../reserva/pasarelaPago.css'
+import { CampoTexto } from '../comunes/CampoTexto'
+import { CELULARES_PRUEBA_YAPE, TARJETAS_PRUEBA } from '../../utilidades/pagoMercadoPago'
 
 const METODOS = [
   {
     clave: 'tarjeta',
     etiqueta: 'Tarjeta',
-    detalle: 'Se simulará un cobro con tarjeta de crédito o débito.',
+    detalle: 'Ingresa los datos de tu tarjeta de crédito o débito. El resultado del pago es simulado.',
     icono: (
       <svg width="18" height="14" viewBox="0 0 20 16" fill="none" aria-hidden="true">
         <rect x="1" y="1" width="18" height="14" rx="2.4" stroke="currentColor" strokeWidth="1.5" />
@@ -16,7 +18,7 @@ const METODOS = [
   {
     clave: 'yape',
     etiqueta: 'Yape',
-    detalle: 'Se simulará un pago aprobado desde tu app de Yape.',
+    detalle: 'Ingresa los datos de tu cuenta Yape. El resultado del pago es simulado.',
     icono: (
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
         <rect x="5" y="1.5" width="10" height="17" rx="2.4" stroke="currentColor" strokeWidth="1.5" />
@@ -38,7 +40,10 @@ function formatearHora(ms) {
   return new Date(ms).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-export function PasoPago({ pasaje, comparacion, metodo, alCambiarMetodo, procesando, avisoPago, intentos }) {
+export function PasoPago({
+  pasaje, comparacion, metodo, alCambiarMetodo, procesando, avisoPago, intentos,
+  datosPago, erroresPago, alEditarDato,
+}) {
   const activo = METODOS.find((m) => m.clave === metodo) ?? METODOS[0]
 
   return (
@@ -78,6 +83,22 @@ export function PasoPago({ pasaje, comparacion, metodo, alCambiarMetodo, procesa
 
         <div className="postergacion-pago__panel">
           <p>{activo.detalle}</p>
+          {metodo === 'tarjeta' ? (
+            <div className="postergacion-pago__formulario">
+              <CampoTexto etiqueta="Número de tarjeta" valor={datosPago.tarjeta.numero} alCambiar={(v) => alEditarDato('tarjeta', 'numero', v)} error={erroresPago.numero} modoEntrada="numeric" autoComplete="cc-number" marcador="4009 1753 3280 6176" deshabilitado={procesando} />
+              <CampoTexto etiqueta="Titular" valor={datosPago.tarjeta.titular} alCambiar={(v) => alEditarDato('tarjeta', 'titular', v)} error={erroresPago.titular} autoComplete="cc-name" marcador="APRO" deshabilitado={procesando} />
+              <CampoTexto etiqueta="Vencimiento (MM/AA)" valor={datosPago.tarjeta.vencimiento} alCambiar={(v) => alEditarDato('tarjeta', 'vencimiento', v)} error={erroresPago.vencimiento} modoEntrada="numeric" autoComplete="cc-exp" marcador="11/30" deshabilitado={procesando} />
+              <CampoTexto etiqueta="CVV" valor={datosPago.tarjeta.cvv} alCambiar={(v) => alEditarDato('tarjeta', 'cvv', v)} error={erroresPago.cvv} modoEntrada="numeric" autoComplete="cc-csc" marcador="123" deshabilitado={procesando} />
+              <p className="postergacion-pago__ayuda">Tarjetas de prueba: {TARJETAS_PRUEBA.map((t) => `${t.marca} ${t.numero}`).join(' · ')}. Vencimiento 11/30, titular APRO.</p>
+            </div>
+          ) : (
+            <div className="postergacion-pago__formulario">
+              <CampoTexto etiqueta="Celular Yape" valor={datosPago.yape.celular} alCambiar={(v) => alEditarDato('yape', 'celular', v)} error={erroresPago.celular} modoEntrada="numeric" marcador="111111111" deshabilitado={procesando} />
+              <CampoTexto etiqueta="Código de aprobación" valor={datosPago.yape.codigoAprobacion} alCambiar={(v) => alEditarDato('yape', 'codigoAprobacion', v)} error={erroresPago.codigoAprobacion} modoEntrada="numeric" marcador="123456" deshabilitado={procesando} />
+              <CampoTexto etiqueta="Correo" tipo="email" valor={datosPago.yape.correo} alCambiar={(v) => alEditarDato('yape', 'correo', v)} error={erroresPago.correo} autoComplete="email" deshabilitado={procesando} />
+              <p className="postergacion-pago__ayuda">Celulares de prueba: {CELULARES_PRUEBA_YAPE.map((c) => `${c.numero} (${c.resultado})`).join(' · ')}. Código 123456.</p>
+            </div>
+          )}
           <div className="postergacion-pago__total">
             <span>Total a pagar</span>
             <strong>{formatearPrecio(comparacion.montoAPagar, pasaje.moneda)}</strong>
