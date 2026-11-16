@@ -8,6 +8,9 @@ import java.time.LocalTime;
 /**
  * Una fila de la consulta de compras: una por pasaje (o una sola con los campos del pasaje en null si la venta
  * no tuviera pasajes). Es un registro interno de lectura; no se expone en la API.
+ *
+ * <p>{@code adicionalPagado} es la suma de {@code postergacion.importe_adicional} de ese pasaje (0 si nunca se
+ * postergó). Lo pagado en total por el pasaje es {@code precioPasaje + adicionalPagado}.</p>
  */
 public record FilaCompra(
         int idVenta, String estadoVenta, BigDecimal montoTotal, LocalDateTime fechaVenta,
@@ -17,5 +20,6 @@ public record FilaCompra(
         String tipoDocumento, String numeroDocumento, String nombres, String apellidos,
         String numeroAsiento, Short piso,
         Long idViaje, LocalDate fechaSalida, LocalTime horaSalida, String estadoViaje,
-        String origen, String destino, String tipoBus) {
+        String origen, String destino, String tipoBus,
+        BigDecimal adicionalPagado) {
 }

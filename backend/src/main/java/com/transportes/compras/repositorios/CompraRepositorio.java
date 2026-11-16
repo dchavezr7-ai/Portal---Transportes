@@ -39,6 +39,8 @@ public class CompraRepositorio {
                    pg.estado_pago, op.estado AS estado_operacion, op.moneda,
                    cp.serie AS comprobante_serie, cp.numero AS comprobante_numero, cp.tipo_comprobante,
                    p.id_pasaje, p.precio AS precio_pasaje,
+                   COALESCE((SELECT SUM(po.importe_adicional) FROM postergacion po
+                             WHERE po.id_pasaje = p.id_pasaje), 0) AS adicional_pagado,
                    pj.tipo_documento, pj.numero_documento, pj.nombres, pj.apellidos,
                    a.numero_asiento, a.piso,
                    v.id_viaje, v.fecha_salida, v.hora_salida, v.estado_viaje,
@@ -119,7 +121,8 @@ public class CompraRepositorio {
                 rs.getString("numero_asiento"), rs.getObject("piso", Short.class),
                 rs.getObject("id_viaje", Long.class), rs.getObject("fecha_salida", LocalDate.class),
                 rs.getObject("hora_salida", LocalTime.class), rs.getString("estado_viaje"),
-                rs.getString("origen"), rs.getString("destino"), rs.getString("nombre_tipo"));
+                rs.getString("origen"), rs.getString("destino"), rs.getString("nombre_tipo"),
+                rs.getObject("adicional_pagado", BigDecimal.class));
     }
 
     private static FilaResumen mapearResumen(ResultSet rs, int fila) throws SQLException {

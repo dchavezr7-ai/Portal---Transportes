@@ -83,6 +83,15 @@ export function filtrarViajesPostergables(pasaje, viajes, ahoraMs) {
   return (viajes ?? []).filter((viaje) => validarViajeNuevo(pasaje, viaje, ahoraMs).valido)
 }
 
+// Lo que el pasaje lleva pagado EN TOTAL: el precio de compra más lo pagado en postergaciones anteriores.
+// La diferencia de una nueva postergación se calcula contra este total (igual que el servidor:
+// pasaje.precio + SUM(importe_adicional)), no contra el precio original, para no cobrar dos veces.
+export function totalPagadoDelPasaje(pasaje) {
+  const precio = Number(pasaje?.precioPagado)
+  const adicional = Number(pasaje?.montoAdicionalPagado)
+  return deCentimos(aCentimos(Number.isFinite(precio) ? precio : 0) + aCentimos(Number.isFinite(adicional) ? adicional : 0))
+}
+
 export function compararTarifas(original, nueva) {
   const centimosOriginal = aCentimos(original)
   const centimosNueva = aCentimos(nueva)
@@ -160,7 +169,8 @@ export function adaptarBoletoReal(compra, boleto, idCliente) {
     asiento: boleto.asiento,
     precioPagado: Number(boleto.precio),
     moneda: compra.moneda ?? 'PEN',
+    // Acumulado pagado en postergaciones anteriores (lo calcula el servidor); 0 si nunca se postergó.
     postergado: false,
-    montoAdicionalPagado: 0,
+    montoAdicionalPagado: Number.isFinite(Number(boleto.adicionalPagado)) ? Number(boleto.adicionalPagado) : 0,
   }
 }

@@ -89,6 +89,19 @@ Todos los endpoints exigen JWT (`/api/usuarios/**` ya es privado) y toman el usu
 
 **Pruebas nuevas:** `ReglasCompraTest`, `ConstructorComprasTest` (unitarias, sin Spring), `ComprasIntegracionTest` (H2: propiedad de compras, 404 en compras ajenas, 401 sin token, resumen, historial; usa `schema-compras-test.sql`) y, en JS, `pasajesVista`, `comprasServicio`, `pdfBoleto` y `formato`.
 
+## Cambio de pasaje (postergación): reglas de cobro y limitaciones conocidas
+
+- **Varias postergaciones.** Un pasaje se puede postergar más de una vez; cada una queda como una fila en `postergacion`
+  (criterio 10). La diferencia a cobrar se calcula contra lo pagado en total: `pasaje.precio + SUM(importe_adicional)`.
+  El servidor lo calcula así y lo expone en cada boleto de "Mis pasajes" como `adicionalPagado`; el front lo usa
+  (`totalPagadoDelPasaje`) para mostrar el mismo monto. `boleto.precio` no cambia, así el total de la venta sigue cuadrando.
+- **Pago simulado.** El servidor recibe la referencia y el monto desde el navegador y NO verifica que el pago esté aprobado.
+  Es aceptable para este avance; antes de producción debe validarse contra la pasarela.
+- **Criterio 6 (pago aprobado y cambio rechazado).** Un pago aprobado queda en el historial de intentos del hook. Si el
+  servidor rechaza después el cambio (`SESION_VENCIDA` o `ASIENTO_NO_DISPONIBLE`), el usuario vuelve a elegir asiento y la
+  regla "pago aprobado no se vuelve a cobrar" le impide pagar de nuevo. Queda como **limitación conocida**; se resuelve
+  en una rama aparte, con test primero, después del merge de este PR.
+
 ## Pruebas
 
 ```powershell

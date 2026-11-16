@@ -61,7 +61,7 @@ class PostergacionServicioTest {
                 "APROBADO", null, "PEN", null, null, null,
                 idPasaje, new BigDecimal("43.00"), "DNI", "12345678", "ANA", "LOPEZ", "4B", (short) 1,
                 VIAJE_ORIGINAL, salida.toLocalDate(), salida.toLocalTime(), estadoViaje,
-                "Trujillo", "Cajamarca", "Bus Cama");
+                "Trujillo", "Cajamarca", "Bus Cama", BigDecimal.ZERO);
     }
 
     static FilaCompra pasajeVigente(LocalDateTime salida) {

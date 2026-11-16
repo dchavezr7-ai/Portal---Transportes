@@ -6,7 +6,7 @@
 //   { pisos: 2, mapaPorPiso: { 1: { asientos: [...] }, 2: { asientos: [...] } } }
 // y cada asiento: { idAsiento, numero, piso, estado, esMio, precio, ... }
 
-import { ESCENARIO_TARIFA, compararTarifas } from './postergacion.js'
+import { ESCENARIO_TARIFA, compararTarifas, totalPagadoDelPasaje } from './postergacion.js'
 import { formatearPrecio } from './formato.js'
 
 // ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ export function viajeParaMostrar(viaje) {
 // elegido (no con el precio "desde" de la búsqueda). Sin asiento no hay tarifa.
 export function calcularTarifaDelAsiento(pasaje, asiento) {
   if (!asiento || !Number.isFinite(Number(asiento.precio))) return null
-  return compararTarifas(pasaje.precioPagado, Number(asiento.precio))
+  return compararTarifas(totalPagadoDelPasaje(pasaje), Number(asiento.precio))
 }
 
 // Explicación que acompaña al monto de la diferencia, según quién la asume.

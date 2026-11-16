@@ -8,6 +8,7 @@ import {
   procesarPagoSimulado,
 } from '../servicios/postergacionMock'
 import { borrarSesionAsientos } from '../servicios/viajesServicio'
+import { confirmarPostergacionEnServidor } from '../servicios/postergacionServicio'
 import { CODIGOS_RECHAZO, puedeContinuarDesdeTarifa } from '../utilidades/postergacion'
 import { evaluarCobro } from '../utilidades/cobroPostergacion'
 import { VALORES_YAPE_INICIALES } from '../utilidades/pagoMercadoPago'
@@ -204,15 +205,23 @@ export function usePostergacion({ pasaje, idCliente, escenario, alEscenarioConsu
   }, [alEscenarioConsumido])
 
   const confirmar = useCallback(async (pago = null) => {
-    const { viaje, asiento, comparacion } = estadoRef.current
+    const { viaje, asiento, comparacion, sesion } = estadoRef.current
     despachar({ tipo: 'confirmando' })
     try {
-      const respuesta = await confirmarPostergacionSimulada({
-        pasaje, viaje, asiento, comparacion, idCliente, escenario: escenarioRef.current, pago,
-      })
+      // Pasaje real: el servidor aplica el cambio de una vez (criterios 8 a 11). Pasaje de prueba: sigue el mock.
+      const respuesta = pasaje.deCompraReal
+        ? await confirmarPostergacionEnServidor({ pasaje, viaje, asiento, comparacion, sesion, pago })
+        : await confirmarPostergacionSimulada({
+          pasaje, viaje, asiento, comparacion, idCliente, escenario: escenarioRef.current, pago,
+        })
       despachar({
         tipo: 'exito',
-        datos: { pasaje: respuesta.pasaje, pago: respuesta.pago, montoAdicional: comparacion.montoAPagar, comparacion },
+        datos: {
+          pasaje: respuesta.pasaje,
+          pago: respuesta.pago,
+          montoAdicional: respuesta.montoAdicional ?? comparacion.montoAPagar,
+          comparacion,
+        },
       })
     } catch (fallo) {
       manejarFallo(fallo)

@@ -1,5 +1,6 @@
 import { EstadoDisponibilidad } from '../comunes/EstadoDisponibilidad'
 import { formatearFechaCorta, formatearFechaHoraCompra, formatearPrecio } from '../../utilidades/formato'
+import { totalPagadoDelPasaje } from '../../utilidades/postergacion'
 
 const ESTADOS = {
   VIGENTE: { clave: 'confirmado', etiqueta: 'Vigente' },
@@ -46,7 +47,7 @@ export function TarjetaPasajeOriginal({ pasaje, titulo = 'Pasaje a cambiar' }) {
 
       <dl className="pasaje-original__datos">
         <div><dt>Asiento</dt><dd>{pasaje.asiento}</dd></div>
-        <div><dt>Pagado</dt><dd className="pasaje-original__precio">{formatearPrecio(pasaje.precioPagado, pasaje.moneda)}</dd></div>
+        <div><dt>Pagado</dt><dd className="pasaje-original__precio">{formatearPrecio(totalPagadoDelPasaje(pasaje), pasaje.moneda)}</dd></div>
         {pasaje.fechaCompra && <div><dt>Comprado</dt><dd>{formatearFechaHoraCompra(pasaje.fechaCompra)}</dd></div>}
       </dl>
     </article>

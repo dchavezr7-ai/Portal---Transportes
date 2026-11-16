@@ -17,6 +17,7 @@ import com.transportes.compras.reglas.ReglasCompra.EstadoCompra;
 import com.transportes.compras.reglas.ReglasCompra.FaseViaje;
 import com.transportes.compras.repositorios.CompraRepositorio;
 import com.transportes.postergacion.dto.ConsultaPostergacionDto;
+import com.transportes.postergacion.excepciones.PostergacionRechazadaException;
 import com.transportes.postergacion.reglas.PoliticaPostergacion;
 import com.transportes.viajes.dto.ViajeResumenDto;
 import com.transportes.viajes.servicios.ViajeService;
@@ -28,7 +29,8 @@ import com.transportes.viajes.servicios.ViajeService;
  * {@link CompraRepositorio} (el pasaje), {@link ReglasCompra} (si está vigente), {@link PoliticaPostergacion}
  * (la regla de 6 h) y {@link ViajeService} (la búsqueda de viajes que ya existía).</p>
  *
- * <p>Las otras actividades agregan aquí sus métodos (por ejemplo, Confirmación agrega el que aplica el cambio).</p>
+ * <p>Las otras actividades agregan aquí sus métodos. Confirmación agrega {@link #exigirPasajeCambiable} (la revalidación
+ * previa); el cambio en sí está en {@link ConfirmacionPostergacionServicio}.</p>
  */
 @Service
 public class PostergacionServicio {
@@ -76,6 +78,32 @@ public class PostergacionServicio {
                 .filter(viaje -> esOtroViaje(viaje, pasaje.idViaje()))
                 .toList();
         return new ConsultaPostergacionDto(mostrados, encontrados.size() - mostrados.size());
+    }
+
+    /**
+     * HU-02 · Confirmación. Vuelve a comprobar, justo antes de aplicar el cambio, lo mismo que la consulta: el pasaje
+     * es del usuario, está vigente y faltan 6 h o más para su salida. Devuelve la fila del pasaje con su viaje y
+     * asiento ACTUALES. Lo usa {@link ConfirmacionPostergacionServicio}; el cambio en sí vive allí.
+     *
+     * @throws ResponseStatusException 404 si el pasaje no existe o es de otra cuenta;
+     *                                 409 (PostergacionRechazadaException) con el motivo si ya no se puede cambiar
+     */
+    public FilaCompra exigirPasajeCambiable(int idUsuario, int idPasaje) {
+        LocalDateTime ahora = LocalDateTime.now(reloj);
+        FilaCompra pasaje = buscarPasajePropio(idUsuario, idPasaje);
+        if (!estaVigente(pasaje, ahora)) {
+            throw new PostergacionRechazadaException(PostergacionRechazadaException.PASAJE_NO_VIGENTE,
+                    "Este pasaje no está vigente, por eso no se puede cambiar.");
+        }
+        PoliticaPostergacion.Resultado resultado =
+                PoliticaPostergacion.evaluar(pasaje.fechaSalida(), pasaje.horaSalida(), ahora);
+        if (!resultado.aceptado()) {
+            String codigo = resultado == PoliticaPostergacion.Resultado.VIAJE_YA_SALIO
+                    ? PostergacionRechazadaException.VIAJE_INICIADO
+                    : PostergacionRechazadaException.ANTICIPACION_INSUFICIENTE;
+            throw new PostergacionRechazadaException(codigo, resultado.mensaje());
+        }
+        return pasaje;
     }
 
     /** Busca el pasaje entre las compras del usuario: si es de otra cuenta, no aparece (404). */

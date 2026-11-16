@@ -34,7 +34,7 @@ class ConstructorComprasTest {
         return new FilaCompra(venta, "PAGADA", new BigDecimal(total), AHORA.minusDays(1),
                 "APROBADO", null, "PEN", null, null, null,
                 pasaje, new BigDecimal(precio), "DNI", "1234567" + pasaje, "ANA", "LOPEZ " + pasaje,
-                asiento, (short) 1, viaje, fecha, OCHO, "PROGRAMADO", "Lima", "Cusco", "Bus Cama");
+                asiento, (short) 1, viaje, fecha, OCHO, "PROGRAMADO", "Lima", "Cusco", "Bus Cama", BigDecimal.ZERO);
     }
 
     static FilaCompra conEstados(FilaCompra base, String estadoVenta, String estadoPago, String estadoOperacion,
@@ -44,7 +44,7 @@ class ConstructorComprasTest {
                 base.idPasaje(), base.precioPasaje(), base.tipoDocumento(), base.numeroDocumento(),
                 base.nombres(), base.apellidos(), base.numeroAsiento(), base.piso(),
                 base.idViaje(), base.fechaSalida(), base.horaSalida(), estadoViaje,
-                base.origen(), base.destino(), base.tipoBus());
+                base.origen(), base.destino(), base.tipoBus(), base.adicionalPagado());
     }
 
     @Test
@@ -99,10 +99,35 @@ class ConstructorComprasTest {
     }
 
     @Test
+    void elBoletoExponeLoPagadoEnPostergacionesSinTocarElPrecioNiElTotal() {
+        FilaCompra base = fila(1, 11, "12A", "43.00", "43.00", PASADO, 500L);
+        FilaCompra conAdicional = new FilaCompra(base.idVenta(), base.estadoVenta(), base.montoTotal(), base.fechaVenta(),
+                base.estadoPago(), base.estadoOperacion(), base.moneda(), null, null, null,
+                base.idPasaje(), base.precioPasaje(), base.tipoDocumento(), base.numeroDocumento(),
+                base.nombres(), base.apellidos(), base.numeroAsiento(), base.piso(),
+                base.idViaje(), base.fechaSalida(), base.horaSalida(), base.estadoViaje(),
+                base.origen(), base.destino(), base.tipoBus(), new BigDecimal("27.00"));
+
+        CompraDto compra = ConstructorCompras.agrupar(List.of(conAdicional), AHORA).get(0);
+
+        assertEquals(0, new BigDecimal("43.00").compareTo(compra.boletos().get(0).precio()), "el precio original no cambia");
+        assertEquals(0, new BigDecimal("27.00").compareTo(compra.boletos().get(0).adicionalPagado()));
+        assertTrue(compra.totalConsistente(), "venta.monto_total sigue cuadrando con la suma de los precios originales");
+    }
+
+    @Test
+    void unBoletoSinPostergacionesTieneAdicionalCero() {
+        CompraDto compra = ConstructorCompras.agrupar(
+                List.of(fila(1, 11, "12A", "43.00", "43.00", PASADO, 500L)), AHORA).get(0);
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(compra.boletos().get(0).adicionalPagado()));
+    }
+
+    @Test
     void unaVentaSinPasajesSeDevuelveComoIncompleta() {
         FilaCompra sinPasaje = new FilaCompra(9, "PAGADA", new BigDecimal("50.00"), AHORA, "APROBADO", null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         CompraDto compra = ConstructorCompras.agrupar(List.of(sinPasaje), AHORA).get(0);
 
         assertTrue(compra.incompleta());
