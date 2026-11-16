@@ -117,7 +117,7 @@ class PostergacionConfirmacionIntegracionTest {
 
         // Criterio 10: mismo pasaje y misma venta, un solo pago en la venta, historial con viaje anterior y nuevo.
         assertEquals(venta, jdbc.queryForObject("SELECT id_venta FROM pasaje WHERE id_pasaje = ?", Integer.class, pasaje));
-        assertEquals(1, contar("SELECT COUNT(*) FROM pasaje"), "no se creó otro pasaje de A ni de B");
+        assertEquals(2, contar("SELECT COUNT(*) FROM pasaje"), "siguen los 2 pasajes de la preparación (A y B): no se creó otro");
         assertEquals(2, contar("SELECT COUNT(*) FROM venta"));
         assertEquals(1, contar("SELECT COUNT(*) FROM pago WHERE id_venta = " + venta));
         var fila = jdbc.queryForMap("SELECT * FROM postergacion WHERE id_pasaje = " + pasaje);
