@@ -53,6 +53,16 @@ export function formatearFechaHoraCompra(valor) {
   })
 }
 
+// Fecha y hora que el servidor ya guardó en hora de Perú y sin zona (por ejemplo "2026-11-16T07:58:34.609"),
+// como la del cambio de viaje: se muestra tal cual, SIN convertir (a diferencia de la fecha de compra, que es UTC).
+export function formatearFechaHoraLima(valor) {
+  if (typeof valor !== 'string' || !valor.includes('T')) return SIN_DATO
+  const [fechaIso, hora] = valor.split('T')
+  const fecha = formatearFechaCorta(fechaIso)
+  if (fecha === SIN_DATO || !/^\d{2}:\d{2}/.test(hora)) return SIN_DATO
+  return `${fecha}, ${hora.slice(0, 5)}`
+}
+
 export function iniciales(nombres, apellidos) {
   const inicial1 = nombres?.trim()?.[0] ?? ''
   const inicial2 = apellidos?.trim()?.[0] ?? ''

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   agruparPasajes, avisoTotal, contarPorFiltro, datosFaltantes, estadoVisible, filtrarHistorial, textoAsientos,
+  textoServicios, viajesActuales,
 } from './pasajesVista.js'
 
 const base = { estado: 'CONFIRMADA', fase: 'PROXIMO', estadoViaje: 'PROGRAMADO', vigente: true, origen: 'Lima', destino: 'Cusco',
@@ -58,4 +59,47 @@ test('avisa cuando el total no coincide con los boletos, pero no si no hay bolet
   assert.equal(avisoTotal(base), null)
   assert.match(avisoTotal({ ...base, totalConsistente: false }), /no coincide/)
   assert.equal(avisoTotal({ ...base, totalConsistente: false, boletos: [] }), null)
+})
+
+const viajeNuevo = { origen: 'Trujillo', destino: 'Chiclayo', fechaSalida: '2026-10-17', horaSalida: '06:30', tipoBus: 'Semi Cama' }
+
+test('sin cambios la compra tiene un solo viaje actual, el de la compra, con todos sus asientos', () => {
+  const viajes = viajesActuales(base)
+  assert.equal(viajes.length, 1)
+  assert.equal(viajes[0].origen, 'Lima')
+  assert.deepEqual(viajes[0].asientos, ['12A', '12B'])
+})
+
+test('un boleto cambiado de viaje aparece en su viaje nuevo, ordenados por salida', () => {
+  const compra = {
+    ...base,
+    boletos: [
+      { asiento: '12A', pasajero: 'Ana' },
+      { asiento: '3B', pasajero: 'Luis', viajeVigente: viajeNuevo },
+      { asiento: '12C', pasajero: 'Eva' },
+    ],
+  }
+  const viajes = viajesActuales(compra)
+  assert.equal(viajes.length, 2)
+  assert.equal(viajes[0].destino, 'Chiclayo', 'sale primero el que sale antes (17 de octubre)')
+  assert.deepEqual(viajes[0].asientos, ['3B'])
+  assert.equal(viajes[1].destino, 'Cusco')
+  assert.deepEqual(viajes[1].asientos, ['12A', '12C'])
+  assert.equal(textoServicios(viajes), 'Semi Cama, Bus Cama')
+})
+
+test('si todos los boletos pasan al mismo viaje nuevo, la compra muestra solo ese viaje', () => {
+  const compra = { ...base, boletos: [{ asiento: '3A', viajeVigente: viajeNuevo }, { asiento: '3B', viajeVigente: viajeNuevo }] }
+  const viajes = viajesActuales(compra)
+  assert.equal(viajes.length, 1)
+  assert.equal(viajes[0].destino, 'Chiclayo')
+  assert.equal(textoServicios(viajes), 'Semi Cama')
+})
+
+test('sin boletos se devuelve el viaje de la compra y sin asientos', () => {
+  const viajes = viajesActuales({ ...base, boletos: [] })
+  assert.equal(viajes.length, 1)
+  assert.equal(viajes[0].origen, 'Lima')
+  assert.deepEqual(viajes[0].asientos, [])
+  assert.equal(textoServicios([{ tipoBus: null }]), null)
 })

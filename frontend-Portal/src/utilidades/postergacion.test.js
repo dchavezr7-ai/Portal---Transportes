@@ -170,3 +170,28 @@ test('adaptar un boleto real lleva el acumulado pagado en postergaciones que man
   const sinCampo = adaptarBoletoReal(compra, { idPasaje: 32, numeroBoleto: 'RL-32', asiento: '9', pasajero: 'Ana', precio: 43 }, 'u1')
   assert.equal(sinCampo.montoAdicionalPagado, 0, 'un servidor sin el campo se trata como sin postergaciones previas')
 })
+
+test('un boleto ya cambiado de viaje se adapta con SU viaje vigente y no con el de la compra', () => {
+  const compra = { idVenta: 5, codigoCompra: 'C-5', idViaje: 100, estado: 'CONFIRMADA', fase: 'PROXIMO', vigente: true, origen: 'Lima', destino: 'Piura', fechaSalida: '2026-12-01', horaSalida: '20:00', empresa: 'RutaLibre', tipoBus: 'Cama', moneda: 'PEN' }
+  const viajeNuevo = { idViaje: 200, origen: 'Trujillo', destino: 'Chiclayo', fechaSalida: '2026-12-05', horaSalida: '06:30', empresa: 'RutaLibre', tipoBus: 'Semi Cama', asiento: '3B' }
+  const boleto = { idPasaje: 31, numeroBoleto: 'RL-31', asiento: '3B', pasajero: 'Ana', precio: 90, adicionalPagado: 27, viajeVigente: viajeNuevo, cambio: { anterior: {}, adicionalPagado: 27, fecha: '2026-11-16T07:58:34' } }
+
+  const pasaje = adaptarBoletoReal(compra, boleto, 'u1')
+
+  assert.equal(pasaje.idViaje, 200)
+  assert.equal(pasaje.origen, 'Trujillo')
+  assert.equal(pasaje.destino, 'Chiclayo')
+  assert.equal(pasaje.fechaSalida, '2026-12-05')
+  assert.equal(pasaje.horaSalida, '06:30')
+  assert.equal(pasaje.tipoBus, 'Semi Cama')
+  assert.equal(pasaje.montoAdicionalPagado, 27)
+})
+
+test('un boleto sin viaje vigente (compra de prueba) usa los datos de la compra', () => {
+  const compra = { idVenta: 5, codigoCompra: 'C-5', idViaje: 100, estado: 'CONFIRMADA', fase: 'PROXIMO', vigente: true, origen: 'Lima', destino: 'Piura', fechaSalida: '2026-12-01', horaSalida: '20:00', empresa: 'X', tipoBus: 'Cama', moneda: 'PEN' }
+  const pasaje = adaptarBoletoReal(compra, { idPasaje: 31, numeroBoleto: 'RL-31', asiento: '8', pasajero: 'Ana', precio: 90 }, 'u1')
+
+  assert.equal(pasaje.idViaje, 100)
+  assert.equal(pasaje.origen, 'Lima')
+  assert.equal(pasaje.fechaSalida, '2026-12-01')
+})

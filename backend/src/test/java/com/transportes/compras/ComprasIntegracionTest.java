@@ -62,7 +62,7 @@ class ComprasIntegracionTest {
     void preparar() throws Exception {
         // Hora de negocio fija: hoy es 12/10/2026 10:00 (Lima).
         reloj.fijar(LocalDateTime.of(2026, 10, 12, 10, 0));
-        for (String tabla : List.of("comprobante", "pasaje", "pago", "operacion_pago", "venta", "viaje_asiento",
+        for (String tabla : List.of("postergacion", "comprobante", "pasaje", "pago", "operacion_pago", "venta", "viaje_asiento",
                 "pasajero", "asiento", "viaje", "bus", "programacion_viaje", "ruta", "agencia", "tipo_bus",
                 "ubicacion")) {
             jdbc.update("DELETE FROM " + tabla);
@@ -225,6 +225,60 @@ class ComprasIntegracionTest {
         assertTrue(compra.get("documentoDisponible").asBoolean());
         // Nunca se expone el documento completo del pasajero.
         assertFalse(r.body().contains("11111111"));
+    }
+
+    @Test
+    void unBoletoCambiadoDosVecesTraeSuViajeVigenteSuUltimoCambioYLosDatosDeLaCompraOriginal() throws Exception {
+        // El segundo boleto de la compra (asiento 12B del viaje 5) se cambia dos veces: viaje 5 -> 8 y viaje 8 -> 9.
+        jdbc.update("UPDATE ruta SET duracion_estimada_min = 90 WHERE id_ruta = 1");
+        insertarViaje(8, "2026-10-22", "PROGRAMADO");
+        insertarViaje(9, "2026-10-28", "PROGRAMADO");
+        insertarAsiento(6, "07B", 8, 120);
+        insertarAsiento(7, "09C", 9, 140);
+        int pasajeCambiado = jdbc.queryForObject("SELECT id_pasaje FROM pasaje WHERE id_viaje_asiento = 2", Integer.class);
+        jdbc.update("UPDATE pasaje SET id_viaje_asiento = 7 WHERE id_pasaje = ?", pasajeCambiado);
+        jdbc.update("INSERT INTO postergacion(id_pasaje,id_venta,id_viaje_anterior,id_viaje_nuevo,"
+                + "id_viaje_asiento_anterior,id_viaje_asiento_nuevo,importe_adicional,referencia_pago,fecha_postergacion) "
+                + "VALUES(?,?,5,8,2,6,25.00,'SIM-1',TIMESTAMP '2026-10-12 09:30:00')", pasajeCambiado, idVentaA1);
+        jdbc.update("INSERT INTO postergacion(id_pasaje,id_venta,id_viaje_anterior,id_viaje_nuevo,"
+                + "id_viaje_asiento_anterior,id_viaje_asiento_nuevo,importe_adicional,referencia_pago,fecha_postergacion) "
+                + "VALUES(?,?,8,9,6,7,10.00,'SIM-2',TIMESTAMP '2026-10-12 09:45:00')", pasajeCambiado, idVentaA1);
+
+        var r = get(BASE + "/pasajes/" + idVentaA1, jwtA);
+        assertEquals(200, r.statusCode(), r.body());
+        JsonNode compra = json.readTree(r.body());
+
+        // Los datos de la compra siguen siendo los del viaje en que se compró; no aparece "incompleta".
+        assertEquals(5, compra.get("idViaje").asInt());
+        assertEquals("2026-10-19", compra.get("fechaSalida").asText());
+        assertFalse(compra.get("incompleta").asBoolean());
+        assertEquals(190.0, compra.get("total").asDouble());
+        assertEquals(225.0, compra.get("totalPagado").asDouble(), "190 de la venta + 25 + 10 de los dos cambios");
+        assertEquals("09:30", compra.get("horaLlegada").asText(), "08:00 + 90 minutos de la ruta");
+        int idPago = jdbc.queryForObject("SELECT id_pago FROM pago WHERE id_venta = ?", Integer.class, idVentaA1);
+        assertEquals(idPago, compra.get("idPago").asInt());
+
+        // El boleto que no se cambió no trae cambio y viaja en el viaje original.
+        JsonNode sinCambio = compra.get("boletos").get(0);
+        assertTrue(sinCambio.get("cambio").isNull());
+        assertEquals("2026-10-19", sinCambio.get("viajeVigente").get("fechaSalida").asText());
+
+        // El boleto cambiado: viaja en el viaje 9 y su último cambio vino del viaje 8.
+        JsonNode cambiado = compra.get("boletos").get(1);
+        assertEquals("09C", cambiado.get("asiento").asText());
+        assertEquals(9, cambiado.get("viajeVigente").get("idViaje").asInt());
+        assertEquals("2026-10-28", cambiado.get("viajeVigente").get("fechaSalida").asText());
+        assertEquals("09:30", cambiado.get("viajeVigente").get("horaLlegada").asText());
+        JsonNode cambio = cambiado.get("cambio");
+        assertEquals(8, cambio.get("anterior").get("idViaje").asInt(), "el último viaje anterior, no el primero");
+        assertEquals("2026-10-22", cambio.get("anterior").get("fechaSalida").asText());
+        assertEquals("08:00", cambio.get("anterior").get("horaSalida").asText());
+        assertEquals("Lima", cambio.get("anterior").get("origen").asText());
+        assertEquals("Cusco", cambio.get("anterior").get("destino").asText());
+        assertEquals("07B", cambio.get("anterior").get("asiento").asText());
+        assertEquals("09:30", cambio.get("anterior").get("horaLlegada").asText());
+        assertEquals(35.0, cambio.get("adicionalPagado").asDouble(), "lo acumulado en los dos cambios");
+        assertTrue(cambio.get("fecha").asText().startsWith("2026-10-12T09:45"), cambio.get("fecha").asText());
     }
 
     @Test

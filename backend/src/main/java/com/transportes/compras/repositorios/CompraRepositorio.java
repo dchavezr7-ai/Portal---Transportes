@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import com.transportes.compras.dto.FilaCompra;
 import com.transportes.compras.dto.FilaResumen;
+import com.transportes.compras.dto.ViajeFila;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -36,7 +37,7 @@ public class CompraRepositorio {
 
     private static final String SELECT_COMPRAS = """
             SELECT ve.id_venta, ve.estado_venta, ve.monto_total, ve.fecha_venta,
-                   pg.estado_pago, op.estado AS estado_operacion, op.moneda,
+                   pg.id_pago, pg.estado_pago, op.estado AS estado_operacion, op.moneda,
                    cp.serie AS comprobante_serie, cp.numero AS comprobante_numero, cp.tipo_comprobante,
                    p.id_pasaje, p.precio AS precio_pasaje,
                    COALESCE((SELECT SUM(po.importe_adicional) FROM postergacion po
@@ -44,7 +45,9 @@ public class CompraRepositorio {
                    pj.tipo_documento, pj.numero_documento, pj.nombres, pj.apellidos,
                    a.numero_asiento, a.piso,
                    v.id_viaje, v.fecha_salida, v.hora_salida, v.estado_viaje,
-                   uo.nombre AS origen, ud.nombre AS destino, tb.nombre_tipo
+                   uo.nombre AS origen, ud.nombre AS destino, tb.nombre_tipo, r.duracion_estimada_min AS duracion_min,
+                   pu.fecha_postergacion AS fecha_cambio, a_ant.numero_asiento AS ant_numero_asiento,
+            """ + columnasViaje("_ant", "ant") + "," + columnasViaje("_orig", "orig") + """
             FROM venta ve
             LEFT JOIN pago pg ON pg.id_venta = ve.id_venta
             LEFT JOIN operacion_pago op ON op.id_venta = ve.id_venta
@@ -62,8 +65,51 @@ public class CompraRepositorio {
             LEFT JOIN ubicacion ud ON ud.id_ubicacion = ad.id_ubicacion
             LEFT JOIN bus b ON b.id_bus = v.id_bus
             LEFT JOIN tipo_bus tb ON tb.id_tipo_bus = b.id_tipo_bus
+            LEFT JOIN postergacion pu ON pu.id_postergacion = (
+                SELECT MAX(x.id_postergacion) FROM postergacion x WHERE x.id_pasaje = p.id_pasaje)
+            LEFT JOIN postergacion pp ON pp.id_postergacion = (
+                SELECT MIN(x.id_postergacion) FROM postergacion x WHERE x.id_pasaje = p.id_pasaje)
+            LEFT JOIN viaje_asiento va_ant ON va_ant.id_viaje_asiento = pu.id_viaje_asiento_anterior
+            LEFT JOIN asiento a_ant ON a_ant.id_asiento = va_ant.id_asiento
+            """ + unirViaje("_ant", "pu.id_viaje_anterior") + unirViaje("_orig", "pp.id_viaje_anterior") + """
             WHERE ve.id_usuario = :idUsuario
             """;
+
+    /*
+     * Cambio de viaje (postergación). Un pasaje puede tener varias filas en `postergacion`:
+     *   pu = la última (su viaje y asiento anteriores, y la fecha del último cambio) -> columnas "ant_*"
+     *   pp = la primera (su viaje anterior es el viaje en que se compró el pasaje)   -> columnas "orig_*"
+     * Si el pasaje nunca se cambió, todo eso viene en null. El "último" y el "primero" se eligen por
+     * id_postergacion (identidad creciente), sin LATERAL, para que la consulta funcione igual en PostgreSQL y H2.
+     */
+
+    /**
+     * Columnas de un viaje traído con {@link #unirViaje}: id, fecha, hora, estado, origen, destino, tipo de bus y
+     * duración estimada de la ruta (para calcular la llegada).
+     */
+    private static String columnasViaje(String sufijo, String prefijo) {
+        return """
+                   v%1$s.id_viaje AS %2$s_id_viaje, v%1$s.fecha_salida AS %2$s_fecha_salida,
+                   v%1$s.hora_salida AS %2$s_hora_salida, v%1$s.estado_viaje AS %2$s_estado_viaje,
+                   uo%1$s.nombre AS %2$s_origen, ud%1$s.nombre AS %2$s_destino, tb%1$s.nombre_tipo AS %2$s_tipo_bus,
+                   r%1$s.duracion_estimada_min AS %2$s_duracion_min
+            """.formatted(sufijo, prefijo);
+    }
+
+    /** Une un viaje (con su ruta y tipo de bus) a partir de la columna que guarda su id. */
+    private static String unirViaje(String sufijo, String columnaIdViaje) {
+        return """
+            LEFT JOIN viaje v%1$s ON v%1$s.id_viaje = %2$s
+            LEFT JOIN programacion_viaje pv%1$s ON pv%1$s.id_programacion = v%1$s.id_programacion
+            LEFT JOIN ruta r%1$s ON r%1$s.id_ruta = pv%1$s.id_ruta
+            LEFT JOIN agencia ao%1$s ON ao%1$s.id_agencia = r%1$s.id_agencia_origen
+            LEFT JOIN ubicacion uo%1$s ON uo%1$s.id_ubicacion = ao%1$s.id_ubicacion
+            LEFT JOIN agencia ad%1$s ON ad%1$s.id_agencia = r%1$s.id_agencia_destino
+            LEFT JOIN ubicacion ud%1$s ON ud%1$s.id_ubicacion = ad%1$s.id_ubicacion
+            LEFT JOIN bus b%1$s ON b%1$s.id_bus = v%1$s.id_bus
+            LEFT JOIN tipo_bus tb%1$s ON tb%1$s.id_tipo_bus = b%1$s.id_tipo_bus
+            """.formatted(sufijo, columnaIdViaje);
+    }
 
     private static final String ORDEN_COMPRAS = " ORDER BY ve.id_venta DESC, p.id_pasaje";
 
@@ -122,7 +168,25 @@ public class CompraRepositorio {
                 rs.getObject("id_viaje", Long.class), rs.getObject("fecha_salida", LocalDate.class),
                 rs.getObject("hora_salida", LocalTime.class), rs.getString("estado_viaje"),
                 rs.getString("origen"), rs.getString("destino"), rs.getString("nombre_tipo"),
-                rs.getObject("adicional_pagado", BigDecimal.class));
+                rs.getObject("adicional_pagado", BigDecimal.class),
+                mapearViaje(rs, "ant", rs.getString("ant_numero_asiento")),
+                mapearViaje(rs, "orig", null),
+                rs.getObject("fecha_cambio", LocalDateTime.class),
+                rs.getObject("id_pago", Integer.class), rs.getObject("duracion_min", Integer.class));
+    }
+
+    /** Viaje de las columnas "{prefijo}_*" o null si el pasaje no fue cambiado (el id viene vacío). */
+    private static ViajeFila mapearViaje(ResultSet rs, String prefijo, String numeroAsiento) throws SQLException {
+        Long idViaje = rs.getObject(prefijo + "_id_viaje", Long.class);
+        if (idViaje == null) {
+            return null;
+        }
+        return new ViajeFila(idViaje,
+                rs.getObject(prefijo + "_fecha_salida", LocalDate.class),
+                rs.getObject(prefijo + "_hora_salida", LocalTime.class),
+                rs.getString(prefijo + "_estado_viaje"),
+                rs.getString(prefijo + "_origen"), rs.getString(prefijo + "_destino"),
+                rs.getString(prefijo + "_tipo_bus"), numeroAsiento, rs.getObject(prefijo + "_duracion_min", Integer.class));
     }
 
     private static FilaResumen mapearResumen(ResultSet rs, int fila) throws SQLException {

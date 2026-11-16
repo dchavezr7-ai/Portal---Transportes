@@ -1,6 +1,7 @@
 package com.transportes.compras.reglas;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -13,10 +14,13 @@ import java.util.Map;
 import java.util.Set;
 
 import com.transportes.compras.dto.BoletoDto;
+import com.transportes.compras.dto.CambioBoletoDto;
 import com.transportes.compras.dto.CompraDto;
 import com.transportes.compras.dto.FilaCompra;
 import com.transportes.compras.dto.FilaResumen;
 import com.transportes.compras.dto.ResumenPerfilDto;
+import com.transportes.compras.dto.ViajeBoletoDto;
+import com.transportes.compras.dto.ViajeFila;
 import com.transportes.compras.reglas.ReglasCompra.EstadoCompra;
 import com.transportes.compras.reglas.ReglasCompra.FaseViaje;
 
@@ -55,14 +59,21 @@ public final class ConstructorCompras {
 
         // Un pasaje no puede aparecer dos veces: si algún join multiplicara filas, se descarta el duplicado.
         Map<Integer, BoletoDto> boletos = new LinkedHashMap<>();
+        // datosViaje = viaje en que se COMPRÓ la compra (aunque algún pasaje se haya cambiado después a otro viaje).
         FilaCompra datosViaje = null;
+        // viajeMasTardio = viaje actual que sale más tarde: decide si la compra sigue "próxima" o ya se "realizó".
+        FilaCompra viajeMasTardio = null;
         Set<Long> viajes = new HashSet<>();
         for (FilaCompra fila : grupo) {
-            if (fila.idViaje() != null) {
-                viajes.add(fila.idViaje());
+            FilaCompra deLaCompra = fila.conViajeOriginal();
+            if (deLaCompra.idViaje() != null) {
+                viajes.add(deLaCompra.idViaje());
             }
-            if (datosViaje == null && fila.fechaSalida() != null) {
-                datosViaje = fila;
+            if (datosViaje == null && deLaCompra.fechaSalida() != null) {
+                datosViaje = deLaCompra;
+            }
+            if (sale(fila) != null && (viajeMasTardio == null || sale(fila).isAfter(sale(viajeMasTardio)))) {
+                viajeMasTardio = fila;
             }
             if (fila.idPasaje() != null && !boletos.containsKey(fila.idPasaje())) {
                 boletos.put(fila.idPasaje(), aBoleto(fila));
@@ -71,14 +82,21 @@ public final class ConstructorCompras {
         if (datosViaje == null) {
             datosViaje = cabecera;
         }
+        if (viajeMasTardio == null) {
+            viajeMasTardio = datosViaje;
+        }
 
         BigDecimal totalPasajes = BigDecimal.ZERO;
+        BigDecimal totalAdicionales = BigDecimal.ZERO;
         boolean boletoIncompleto = false;
         for (BoletoDto boleto : boletos.values()) {
             if (boleto.precio() != null) {
                 totalPasajes = totalPasajes.add(boleto.precio());
             } else {
                 boletoIncompleto = true;
+            }
+            if (boleto.adicionalPagado() != null) {
+                totalAdicionales = totalAdicionales.add(boleto.adicionalPagado());
             }
             if (boleto.asiento() == null || boleto.pasajero() == null) {
                 boletoIncompleto = true;
@@ -88,7 +106,7 @@ public final class ConstructorCompras {
         EstadoCompra estado = ReglasCompra.estadoCompra(
                 cabecera.estadoVenta(), cabecera.estadoPago(), cabecera.estadoOperacion());
         FaseViaje fase = ReglasCompra.faseViaje(
-                datosViaje.estadoViaje(), datosViaje.fechaSalida(), datosViaje.horaSalida(), ahora);
+                viajeMasTardio.estadoViaje(), viajeMasTardio.fechaSalida(), viajeMasTardio.horaSalida(), ahora);
 
         boolean incompleta = boletos.isEmpty() || boletoIncompleto || viajes.size() > 1
                 || datosViaje.origen() == null || datosViaje.destino() == null
@@ -97,6 +115,8 @@ public final class ConstructorCompras {
 
         BigDecimal total = cabecera.montoTotal();
         boolean consistente = total != null && !boletos.isEmpty() && total.compareTo(totalPasajes) == 0;
+        // Lo pagado en total: la venta original más lo que se pagó en cada cambio de viaje.
+        BigDecimal totalPagado = total == null ? null : total.add(totalAdicionales);
 
         String comprobante = cabecera.comprobanteSerie() != null && cabecera.comprobanteNumero() != null
                 ? cabecera.comprobanteSerie() + "-" + cabecera.comprobanteNumero() : null;
@@ -104,7 +124,7 @@ public final class ConstructorCompras {
         return new CompraDto(
                 cabecera.idVenta(), codigoCompra(cabecera.idVenta()),
                 estado.name(), cabecera.estadoVenta(), cabecera.estadoPago(),
-                datosViaje.estadoViaje(), fase.name(),
+                viajeMasTardio.estadoViaje(), fase.name(),
                 ReglasCompra.esVigente(estado, fase), ReglasCompra.documentoDisponible(estado, fase), incompleta,
                 datosViaje.origen(), datosViaje.destino(), datosViaje.fechaSalida(),
                 datosViaje.horaSalida() == null ? null : datosViaje.horaSalida().format(HORA),
@@ -112,17 +132,59 @@ public final class ConstructorCompras {
                 List.copyOf(boletos.values()),
                 total, totalPasajes, consistente,
                 cabecera.moneda() == null ? MONEDA_POR_DEFECTO : cabecera.moneda(),
-                cabecera.fechaVenta(), comprobante);
+                cabecera.fechaVenta(), comprobante,
+                datosViaje.idViaje(), totalPagado,
+                horaLlegada(datosViaje.fechaSalida(), datosViaje.horaSalida(), datosViaje.duracionMin()),
+                cabecera.idPago());
+    }
+
+    /** Fecha y hora de salida del viaje actual de la fila, o null si no se conocen. */
+    private static LocalDateTime sale(FilaCompra fila) {
+        if (fila.fechaSalida() == null || fila.horaSalida() == null) {
+            return null;
+        }
+        return fila.fechaSalida().atTime(fila.horaSalida());
     }
 
     private static BoletoDto aBoleto(FilaCompra fila) {
         String nombre = (nulo(fila.nombres()) + " " + nulo(fila.apellidos())).trim();
+        BigDecimal adicionalPagado = fila.adicionalPagado() == null ? BigDecimal.ZERO : fila.adicionalPagado();
+        ViajeBoletoDto viajeVigente = new ViajeBoletoDto(
+                fila.idViaje(), fila.origen(), fila.destino(), fila.fechaSalida(), formatearHora(fila.horaSalida()),
+                horaLlegada(fila.fechaSalida(), fila.horaSalida(), fila.duracionMin()),
+                EMPRESA, fila.tipoBus(), fila.numeroAsiento());
         return new BoletoDto(
                 fila.idPasaje(), numeroBoleto(fila.idPasaje()),
                 nombre.isEmpty() ? null : nombre,
                 ReglasCompra.enmascararDocumento(fila.tipoDocumento(), fila.numeroDocumento()),
-                fila.numeroAsiento(), fila.piso(), fila.precioPasaje(),
-                fila.adicionalPagado() == null ? BigDecimal.ZERO : fila.adicionalPagado());
+                fila.numeroAsiento(), fila.piso(), fila.precioPasaje(), adicionalPagado,
+                viajeVigente, aCambio(fila, adicionalPagado));
+    }
+
+    /** Último cambio de viaje del boleto, o null si nunca se cambió. */
+    private static CambioBoletoDto aCambio(FilaCompra fila, BigDecimal adicionalPagado) {
+        ViajeFila anterior = fila.viajeAnterior();
+        if (!fila.fueCambiado() || anterior == null) {
+            return null;
+        }
+        ViajeBoletoDto viajeAnterior = new ViajeBoletoDto(
+                anterior.idViaje(), anterior.origen(), anterior.destino(), anterior.fechaSalida(),
+                formatearHora(anterior.horaSalida()),
+                horaLlegada(anterior.fechaSalida(), anterior.horaSalida(), anterior.duracionMin()),
+                EMPRESA, anterior.tipoBus(), anterior.numeroAsiento());
+        return new CambioBoletoDto(viajeAnterior, adicionalPagado, fila.fechaCambio());
+    }
+
+    private static String formatearHora(LocalTime hora) {
+        return hora == null ? null : hora.format(HORA);
+    }
+
+    /** Hora de llegada = salida + duración estimada de la ruta. Sin duración no se inventa: queda en null. */
+    private static String horaLlegada(LocalDate fechaSalida, LocalTime horaSalida, Integer duracionMin) {
+        if (fechaSalida == null || horaSalida == null || duracionMin == null) {
+            return null;
+        }
+        return fechaSalida.atTime(horaSalida).plusMinutes(duracionMin).format(HORA);
     }
 
     /** Referencia visible de la compra, derivada de venta.id_venta (no es un código de validación). */

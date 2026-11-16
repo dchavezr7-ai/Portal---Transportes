@@ -5,7 +5,9 @@ import { listarHistorial } from '../../servicios/comprasServicio'
 import { EstadoDisponibilidad } from '../../componentes/comunes/EstadoDisponibilidad'
 import { PanelAsincrono } from '../../componentes/carga'
 import { formatearFechaCorta, formatearPrecio } from '../../utilidades/formato'
-import { contarPorFiltro, estadoVisible, filtrarHistorial, FILTROS_HISTORIAL, textoAsientos } from '../../utilidades/pasajesVista'
+import {
+  contarPorFiltro, estadoVisible, filtrarHistorial, FILTROS_HISTORIAL, textoAsientos, textoServicios, viajesActuales,
+} from '../../utilidades/pasajesVista'
 import './paginaHistorial.css'
 
 export function PaginaHistorial() {
@@ -76,22 +78,26 @@ export function PaginaHistorial() {
               <ul className="pagina-historial__lista">
                 {visibles.map((compra) => {
                   const estadoCompra = estadoVisible(compra)
+                  // Viajes en los que viajan hoy los boletos (un boleto cambiado ya no viaja en el de la compra).
+                  const viajes = viajesActuales(compra)
+                  const primero = viajes[0]
                   return (
                     <li key={compra.idVenta} className="pagina-historial__fila">
                       <span className="pagina-historial__dia">
-                        {compra.fechaSalida ? formatearFechaCorta(compra.fechaSalida) : 'Fecha por confirmar'}
-                        {compra.horaSalida && <small>{compra.horaSalida}</small>}
+                        {primero.fechaSalida ? formatearFechaCorta(primero.fechaSalida) : 'Fecha por confirmar'}
+                        {primero.horaSalida && <small>{primero.horaSalida}</small>}
                       </span>
                       <span className="pagina-historial__ruta">
-                        <span className="pagina-historial__ciudad">{compra.origen ?? '—'}</span>
+                        <span className="pagina-historial__ciudad">{primero.origen ?? '—'}</span>
                         <span className="pagina-historial__flecha" aria-hidden="true">→</span>
-                        <span className="pagina-historial__ciudad">{compra.destino ?? '—'}</span>
+                        <span className="pagina-historial__ciudad">{primero.destino ?? '—'}</span>
                       </span>
                       <span className="pagina-historial__servicio">
-                        {compra.tipoBus ?? '—'}
+                        {textoServicios(viajes) ?? '—'}
                         <small>Asientos: {textoAsientos(compra) ?? '—'}</small>
+                        {viajes.length > 1 && <small>Y {viajes.length - 1} {viajes.length === 2 ? 'viaje más' : 'viajes más'} en esta compra</small>}
                       </span>
-                      <span className="pagina-historial__precio">{formatearPrecio(compra.total, compra.moneda)}</span>
+                      <span className="pagina-historial__precio">{formatearPrecio(compra.totalPagado ?? compra.total, compra.moneda)}</span>
                       <EstadoDisponibilidad estado={estadoCompra.clave} etiqueta={estadoCompra.etiqueta} />
                       <Link className="pagina-historial__detalle" to={`/perfil/pasajes/${compra.idVenta}`}>
                         Ver detalle<span className="pagina-historial__solo-lectores"> de la compra {compra.codigoCompra}</span>

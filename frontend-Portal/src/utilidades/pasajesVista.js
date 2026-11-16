@@ -73,6 +73,37 @@ export function contarPorFiltro(compras) {
   return Object.fromEntries(FILTROS_HISTORIAL.map(({ id }) => [id, filtrarHistorial(compras, id).length]))
 }
 
+/**
+ * Viajes en los que viajan HOY los boletos de una compra, del que sale primero al que sale después.
+ * Un boleto cambiado de viaje ya no viaja en el viaje de la compra: agrupa por el viaje vigente de cada boleto
+ * ({ origen, destino, fechaSalida, horaSalida, tipoBus, asientos[] }). Sin cambios sale un solo viaje, igual al de
+ * la compra. Si faltan los boletos (compra incompleta o de prueba), devuelve el viaje de la compra sin asientos.
+ */
+export function viajesActuales(compra) {
+  const grupos = new Map()
+  for (const boleto of compra?.boletos ?? []) {
+    const viaje = boleto.viajeVigente ?? compra
+    const clave = `${viaje.fechaSalida}|${viaje.horaSalida}|${viaje.origen}|${viaje.destino}`
+    if (!grupos.has(clave)) {
+      const { origen, destino, fechaSalida, horaSalida, tipoBus } = viaje
+      grupos.set(clave, { origen, destino, fechaSalida, horaSalida, tipoBus, asientos: [] })
+    }
+    if (boleto.asiento) grupos.get(clave).asientos.push(boleto.asiento)
+  }
+  if (grupos.size === 0) {
+    const { origen, destino, fechaSalida, horaSalida, tipoBus } = compra ?? {}
+    return [{ origen, destino, fechaSalida, horaSalida, tipoBus, asientos: [] }]
+  }
+  return [...grupos.values()].sort((a, b) =>
+    `${a.fechaSalida} ${a.horaSalida}`.localeCompare(`${b.fechaSalida} ${b.horaSalida}`))
+}
+
+/** Servicios (tipos de bus) de los viajes, sin repetir: "Estándar" o "Estándar, Semi Cama". */
+export function textoServicios(viajes) {
+  const servicios = [...new Set((viajes ?? []).map((viaje) => viaje.tipoBus).filter(Boolean))]
+  return servicios.length > 0 ? servicios.join(', ') : null
+}
+
 export function textoAsientos(compra) {
   const asientos = (compra?.boletos ?? []).map((boleto) => boleto.asiento).filter(Boolean)
   return asientos.length > 0 ? asientos.join(', ') : null

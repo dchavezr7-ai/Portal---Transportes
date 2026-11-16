@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatearFechaCorta, formatearFechaHoraCompra, formatearFechaLarga, formatearPrecio, iniciales } from './formato.js'
+import { formatearFechaCorta, formatearFechaHoraCompra, formatearFechaHoraLima, formatearFechaLarga, formatearPrecio, iniciales } from './formato.js'
+
+test('formatearFechaHoraLima muestra la hora de Perú tal cual, sin restarle horas', () => {
+  const texto = formatearFechaHoraLima('2026-11-16T07:58:34.609065')
+  assert.match(texto, /16/)
+  assert.match(texto, /2026/)
+  assert.match(texto, /07:58$/)
+})
+
+test('formatearFechaHoraLima devuelve un guion si el valor no es válido', () => {
+  assert.equal(formatearFechaHoraLima(null), '—')
+  assert.equal(formatearFechaHoraLima('2026-11-16'), '—')
+  assert.equal(formatearFechaHoraLima('basura-T-xx'), '—')
+})
 
 test('formatea importes y no revienta con datos ausentes', () => {
   assert.equal(formatearPrecio(190), 'S/ 190.00')

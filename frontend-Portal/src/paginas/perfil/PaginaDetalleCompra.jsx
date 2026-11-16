@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { useAutenticacion } from '../../hooks/useAutenticacion'
 import { adaptarBoletoReal, puedeIniciarPostergacion } from '../../utilidades/postergacion'
 import { obtenerCompra } from '../../servicios/comprasServicio'
-import { descargarPdfDocumentoMock, verPdfDocumentoMock } from '../../servicios/pdfCompraMock'
+import { OPCIONES_PDF_REAL, descargarPdfDocumentoMock, verPdfDocumentoMock } from '../../servicios/pdfCompraMock'
 import { vistaCambioSimulado } from '../../utilidades/vistaCambioSimulado'
 import { TarjetaTicket } from '../../componentes/perfil/TarjetaTicket'
 import { PanelAsincrono } from '../../componentes/carga'
@@ -22,6 +22,8 @@ export function PaginaDetalleCompra() {
   const [errorPdf, setErrorPdf] = useState('')
   const compraVisible = vistaCambioSimulado(compra, state?.cambioSimulado)
   const vistaPrevia = compraVisible !== compra
+  // Con algún boleto cambiado de viaje (registrado en el servidor) hay un PDF por documento, igual que en la vista previa.
+  const hayCambiosReales = !vistaPrevia && Boolean(compra?.boletos?.some((boleto) => boleto.cambio))
 
   useEffect(() => {
     let cancelado = false
@@ -49,6 +51,8 @@ export function PaginaDetalleCompra() {
     try {
       if (vistaPrevia) {
         await descargarPdfDocumentoMock(compraVisible, documento)
+      } else if (hayCambiosReales) {
+        await descargarPdfDocumentoMock(compra, documento, OPCIONES_PDF_REAL)
       } else {
         const { descargarPdfCompra } = await import('../../servicios/pdfBoleto')
         await descargarPdfCompra(compra)
@@ -61,11 +65,12 @@ export function PaginaDetalleCompra() {
   }
 
   async function verPdf(documento) {
-    if (!vistaPrevia || !compra?.documentoDisponible) return
+    if (!(vistaPrevia || hayCambiosReales) || !compra?.documentoDisponible) return
     setDescargando(true)
     setErrorPdf('')
     try {
-      await verPdfDocumentoMock(compraVisible, documento)
+      if (vistaPrevia) await verPdfDocumentoMock(compraVisible, documento)
+      else await verPdfDocumentoMock(compra, documento, OPCIONES_PDF_REAL)
     } catch {
       setErrorPdf('No se pudo abrir el PDF. Inténtalo nuevamente.')
     } finally {
@@ -96,7 +101,7 @@ export function PaginaDetalleCompra() {
             <TarjetaTicket
               compra={compraVisible}
               onDescargar={descargarPdf}
-              onVerPdf={vistaPrevia ? verPdf : undefined}
+              onVerPdf={vistaPrevia || hayCambiosReales ? verPdf : undefined}
               descargando={descargando}
               errorPdf={errorPdf}
               accionBoleto={(boleto) => !vistaPrevia && puedeIniciarPostergacion(compra) && (

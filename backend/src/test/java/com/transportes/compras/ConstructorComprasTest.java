@@ -14,10 +14,12 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.transportes.compras.dto.BoletoDto;
 import com.transportes.compras.dto.CompraDto;
 import com.transportes.compras.dto.FilaCompra;
 import com.transportes.compras.dto.FilaResumen;
 import com.transportes.compras.dto.ResumenPerfilDto;
+import com.transportes.compras.dto.ViajeFila;
 import com.transportes.compras.reglas.ConstructorCompras;
 
 /** Agrupación de filas en compras, orden e indicadores del perfil, sin base de datos. */
@@ -121,6 +123,150 @@ class ConstructorComprasTest {
                 List.of(fila(1, 11, "12A", "43.00", "43.00", PASADO, 500L)), AHORA).get(0);
 
         assertEquals(0, BigDecimal.ZERO.compareTo(compra.boletos().get(0).adicionalPagado()));
+    }
+
+    // ---------- Pasajes cambiados de viaje (postergación) ----------
+
+    /** Viaje de Lima a Cusco a las 08:00, con el asiento que el pasaje tenía en él. */
+    static ViajeFila viajeAnterior(long id, LocalDate fecha, String asiento) {
+        return new ViajeFila(id, fecha, OCHO, "PROGRAMADO", "Lima", "Cusco", "Bus Cama", asiento, 120);
+    }
+
+    /**
+     * El mismo pasaje de {@code base}, ya movido a otro viaje (Trujillo a Chiclayo). Su fila trae el viaje NUEVO
+     * y los datos del cambio: el viaje anterior, el viaje en que se compró y lo pagado de más.
+     */
+    static FilaCompra cambiado(FilaCompra base, long viajeNuevo, LocalDate fechaNueva, String asientoNuevo,
+                               ViajeFila anterior, ViajeFila original, String adicional) {
+        return new FilaCompra(base.idVenta(), base.estadoVenta(), base.montoTotal(), base.fechaVenta(),
+                base.estadoPago(), base.estadoOperacion(), base.moneda(), null, null, null,
+                base.idPasaje(), base.precioPasaje(), base.tipoDocumento(), base.numeroDocumento(),
+                base.nombres(), base.apellidos(), asientoNuevo, base.piso(),
+                viajeNuevo, fechaNueva, OCHO, "PROGRAMADO", "Trujillo", "Chiclayo", "Bus Semi Cama",
+                new BigDecimal(adicional), anterior, original, AHORA.minusHours(2), 77, 90);
+    }
+
+    @Test
+    void unBoletoCambiadoMuestraSuViajeVigenteYSuUltimoCambio() {
+        ViajeFila antes = viajeAnterior(5, FUTURO, "12B");
+        CompraDto compra = ConstructorCompras.agrupar(List.of(
+                fila(7, 20, "12A", "95.00", "285.00", FUTURO, 5),
+                cambiado(fila(7, 21, "12B", "95.00", "285.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3B", antes, antes, "27.00"),
+                fila(7, 22, "12C", "95.00", "285.00", FUTURO, 5)), AHORA).get(0);
+
+        BoletoDto sinCambio = compra.boletos().get(0);
+        assertNull(sinCambio.cambio(), "un boleto que nunca se cambió no trae cambio");
+        assertEquals("Lima", sinCambio.viajeVigente().origen());
+
+        BoletoDto cambiado = compra.boletos().get(1);
+        assertEquals("Chiclayo", cambiado.viajeVigente().destino());
+        assertEquals("3B", cambiado.viajeVigente().asiento());
+        assertEquals("08:00", cambiado.viajeVigente().horaSalida());
+        assertEquals("Lima", cambiado.cambio().anterior().origen());
+        assertEquals("Cusco", cambiado.cambio().anterior().destino());
+        assertEquals("12B", cambiado.cambio().anterior().asiento(), "el asiento que tenía antes del cambio");
+        assertEquals(FUTURO, cambiado.cambio().anterior().fechaSalida());
+        assertEquals(0, new BigDecimal("27.00").compareTo(cambiado.cambio().adicionalPagado()));
+        assertEquals(AHORA.minusHours(2), cambiado.cambio().fecha());
+    }
+
+    @Test
+    void laCompraSigueMostrandoElViajeEnQueSeCompro() {
+        ViajeFila antes = viajeAnterior(5, FUTURO, "12A");
+        CompraDto compra = ConstructorCompras.agrupar(List.of(
+                cambiado(fila(7, 20, "12A", "95.00", "95.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3B", antes, antes, "27.00")),
+                AHORA).get(0);
+
+        assertEquals("Lima", compra.origen(), "no se muestra el viaje nuevo como viaje de la compra");
+        assertEquals("Cusco", compra.destino());
+        assertEquals(FUTURO, compra.fechaSalida());
+        assertEquals(5L, compra.idViaje());
+        assertFalse(compra.incompleta());
+    }
+
+    @Test
+    void boletosEnViajesDistintosPorUnCambioNoMarcanLaCompraComoIncompleta() {
+        ViajeFila antes = viajeAnterior(5, FUTURO, "12B");
+        CompraDto conCambio = ConstructorCompras.agrupar(List.of(
+                fila(7, 20, "12A", "95.00", "190.00", FUTURO, 5),
+                cambiado(fila(7, 21, "12B", "95.00", "190.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3B", antes, antes, "27.00")),
+                AHORA).get(0);
+        CompraDto sinCambio = ConstructorCompras.agrupar(List.of(
+                fila(8, 30, "1A", "95.00", "190.00", FUTURO, 5),
+                fila(8, 31, "1B", "95.00", "190.00", FUTURO.plusDays(3), 6)), AHORA).get(0);
+
+        assertFalse(conCambio.incompleta());
+        assertTrue(sinCambio.incompleta(), "dos viajes distintos sin ningún cambio registrado siguen siendo un dato raro");
+    }
+
+    @Test
+    void elTotalPagadoSumaLosAdicionalesDeTodosLosBoletos() {
+        ViajeFila antes = viajeAnterior(5, FUTURO, "12B");
+        CompraDto compra = ConstructorCompras.agrupar(List.of(
+                fila(7, 20, "12A", "95.00", "285.00", FUTURO, 5),
+                cambiado(fila(7, 21, "12B", "95.00", "285.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3B", antes, antes, "27.00"),
+                cambiado(fila(7, 22, "12C", "95.00", "285.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3C", antes, antes, "10.50")),
+                AHORA).get(0);
+
+        assertEquals(0, new BigDecimal("285.00").compareTo(compra.total()), "la venta original no cambia");
+        assertEquals(0, new BigDecimal("322.50").compareTo(compra.totalPagado()));
+        assertTrue(compra.totalConsistente());
+    }
+
+    @Test
+    void sinCambiosElTotalPagadoEsElTotalDeLaVenta() {
+        CompraDto compra = ConstructorCompras.agrupar(
+                List.of(fila(7, 20, "12A", "95.00", "95.00", FUTURO, 5)), AHORA).get(0);
+
+        assertEquals(0, new BigDecimal("95.00").compareTo(compra.totalPagado()));
+    }
+
+    @Test
+    void conVariosCambiosElViajeOriginalEsElPrimeroYElAnteriorEsElUltimo() {
+        ViajeFila original = viajeAnterior(5, FUTURO, "12A");
+        ViajeFila ultimoAnterior = new ViajeFila(6L, FUTURO.plusDays(3), OCHO, "PROGRAMADO",
+                "Trujillo", "Chiclayo", "Bus Semi Cama", "3B", 90);
+        CompraDto compra = ConstructorCompras.agrupar(List.of(
+                cambiado(fila(7, 20, "12A", "95.00", "95.00", FUTURO, 5), 7, FUTURO.plusDays(6), "8A",
+                        ultimoAnterior, original, "40.00")), AHORA).get(0);
+
+        assertEquals(5L, compra.idViaje().longValue(), "la compra describe el viaje en que se compró");
+        assertEquals("Lima", compra.origen());
+        assertEquals(6L, compra.boletos().get(0).cambio().anterior().idViaje().longValue(),
+                "el cambio describe el último viaje anterior");
+        assertEquals("3B", compra.boletos().get(0).cambio().anterior().asiento());
+    }
+
+    @Test
+    void laCompraSigueProximaSiElViajeOriginalYaSalioPeroUnBoletoCambiadoViajaDespues() {
+        ViajeFila original = viajeAnterior(5, PASADO, "12A");
+        CompraDto compra = ConstructorCompras.agrupar(List.of(
+                fila(7, 20, "12A", "95.00", "190.00", PASADO, 5),
+                cambiado(fila(7, 21, "12B", "95.00", "190.00", PASADO, 5), 6, FUTURO, "3B", original, original, "27.00")),
+                AHORA).get(0);
+
+        assertEquals("PROXIMO", compra.fase());
+        assertTrue(compra.vigente(), "mientras algún boleto no viaje, la compra sigue vigente");
+        assertEquals(PASADO, compra.fechaSalida(), "pero sus datos siguen siendo los del viaje original");
+    }
+
+    @Test
+    void laHoraDeLlegadaSeCalculaConLaDuracionDeLaRutaYSinDuracionQuedaVacia() {
+        ViajeFila antes = viajeAnterior(5, FUTURO, "12A"); // ruta de 120 min; el viaje nuevo (de la fila) es de 90 min
+        CompraDto conDuracion = ConstructorCompras.agrupar(List.of(
+                cambiado(fila(7, 20, "12A", "95.00", "95.00", FUTURO, 5), 6, FUTURO.plusDays(3), "3B", antes, antes, "27.00")),
+                AHORA).get(0);
+
+        assertEquals("10:00", conDuracion.horaLlegada(), "la compra es del viaje original: 08:00 + 120 min");
+        assertEquals("09:30", conDuracion.boletos().get(0).viajeVigente().horaLlegada(), "viaje nuevo: 08:00 + 90 min");
+        assertEquals("10:00", conDuracion.boletos().get(0).cambio().anterior().horaLlegada());
+        assertEquals(77, conDuracion.idPago().intValue(), "el pago de la venta");
+
+        CompraDto sinDuracion = ConstructorCompras.agrupar(
+                List.of(fila(8, 30, "1A", "95.00", "95.00", FUTURO, 5)), AHORA).get(0);
+        assertNull(sinDuracion.horaLlegada(), "sin duración estimada no se inventa la llegada");
+        assertNull(sinDuracion.boletos().get(0).viajeVigente().horaLlegada());
+        assertNull(sinDuracion.idPago());
     }
 
     @Test
