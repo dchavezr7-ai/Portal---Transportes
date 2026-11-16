@@ -1,7 +1,6 @@
 /**
- * Modelos base para autenticación y autorización.
- * No hay lógica real todavía: son los contratos sobre los que se
- * construirá el sistema de auth (login, sesión, roles, permisos).
+ * Modelos de autenticación y autorización del Sistema Empresarial.
+ * El login real lo hace el backend (POST /api/auth/login-empresarial).
  */
 
 export type UserRole = 'owner' | 'admin' | 'manager' | 'staff'
@@ -18,9 +17,29 @@ export interface AuthUser {
   permissions: string[]
   /** Agencia/sede a la que está asociado el usuario. */
   agenciaId: string
+  /** Nombre de la sede que envía el backend (tabla agencia). */
+  agenciaNombre?: string
 }
 
 export interface AuthSession {
   user: AuthUser | null
   status: 'authenticated' | 'unauthenticated' | 'loading'
+}
+
+/** Roles del backend que pueden entrar al Sistema Empresarial. */
+export type RolEmpresa = 'AGENCIA' | 'GERENTE'
+
+/** Respuesta de POST /api/auth/login-empresarial. */
+export interface RespuestaLogin {
+  token: string
+  usuario: {
+    idUsuario: number
+    nombres: string
+    apellidos: string
+    correo: string
+  }
+  /** Datos de la tabla empleado. */
+  rol: RolEmpresa
+  idAgencia: number | null
+  nombreAgencia: string
 }

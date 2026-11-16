@@ -15,7 +15,7 @@ interface ProtectedRouteProps {
  *   'authenticated'   -> `children` (el `AppLayout` protegido)
  *
  * `init()` se dispara una sola vez al montar la app y resuelve el estado
- * inicial comprobando si ya existe una sesión simulada (ver `authStore`).
+ * inicial comprobando si ya existe una sesión guardada (ver `authStore`).
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const status = useAuthStore((s) => s.status)

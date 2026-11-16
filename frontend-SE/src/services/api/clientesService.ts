@@ -13,16 +13,16 @@ export const clientesService: ClientesService = {
     })
     if (consulta.q.trim()) parametros.set('q', consulta.q.trim())
     if (consulta.tipoDocumento) parametros.set('tipoDocumento', consulta.tipoDocumento)
-    const pagina = await solicitarApi<PaginaClientes>(`/api/clientes?${parametros}`, { autenticar: false })
+    const pagina = await solicitarApi<PaginaClientes>(`/api/clientes?${parametros}`)
     if (!pagina || !Array.isArray(pagina.contenido)) throw new ApiError('El servidor devolvió una lista de clientes no válida.', 0)
     return pagina
   },
 
   async indicadores() {
-    return solicitarApi<IndicadoresClientes>('/api/clientes/indicadores', { autenticar: false })
+    return solicitarApi<IndicadoresClientes>('/api/clientes/indicadores')
   },
 
   async detalle(idPasajero) {
-    return solicitarApi<ClienteDetalle>(`/api/clientes/${idPasajero}`, { autenticar: false })
+    return solicitarApi<ClienteDetalle>(`/api/clientes/${idPasajero}`)
   },
 }

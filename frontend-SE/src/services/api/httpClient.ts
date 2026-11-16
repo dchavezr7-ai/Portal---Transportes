@@ -25,6 +25,17 @@ export function configurarProveedorToken(proveedor: ProveedorToken): void {
   proveedorToken = proveedor
 }
 
+/**
+ * Patrón Observador: el store de sesión se suscribe aquí para enterarse
+ * cuando el backend rechaza el token (401), por ejemplo porque venció.
+ */
+type AlSesionVencida = () => void
+let alSesionVencida: AlSesionVencida = () => {}
+
+export function configurarAlSesionVencida(accion: AlSesionVencida): void {
+  alSesionVencida = accion
+}
+
 export interface OpcionesApi extends Omit<RequestInit, 'body'> {
     body?: unknown
     autenticar?: boolean
@@ -67,6 +78,9 @@ export async function solicitarApi<T = unknown>(ruta: string, opciones: Opciones
   const cuerpo = respuesta.status === 204 ? null : await respuesta.json().catch(() => null)
 
   if (!respuesta.ok) {
+    // Se envió un token y el backend lo rechazó: la sesión ya no es válida.
+    if (respuesta.status === 401 && token) alSesionVencida()
+
     throw new ApiError(
       (cuerpo as { mensaje?: string } | null)?.mensaje ?? 'Ocurrió un error al comunicarse con el servidor.',
       respuesta.status,
