@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.transportes.auth.excepciones.AccesoEmpresarialDenegadoException;
 import com.transportes.auth.excepciones.CredencialesInvalidasException;
 import com.transportes.auth.excepciones.CuentaExistenteException;
 import com.transportes.auth.excepciones.GoogleServicioNoDisponibleException;
@@ -110,6 +111,12 @@ public class ManejadorGlobalExcepciones {
     public ResponseEntity<RespuestaError> manejarCredencialesInvalidas(
             CredencialesInvalidasException excepcion, HttpServletRequest request) {
         return construirRespuesta(HttpStatus.UNAUTHORIZED, excepcion.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(AccesoEmpresarialDenegadoException.class)
+    public ResponseEntity<RespuestaError> manejarAccesoEmpresarialDenegado(
+            AccesoEmpresarialDenegadoException excepcion, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.FORBIDDEN, excepcion.getMessage(), request, null);
     }
 
     /** Recuperacion de contrasena: el servicio ya fija estado y mensaje seguros (sin enumerar cuentas). */

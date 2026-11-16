@@ -1,6 +1,7 @@
 package com.transportes.auth.controladores;
 
 import com.transportes.auth.dto.GoogleLoginRequest;
+import com.transportes.auth.dto.LoginEmpresarialResponse;
 import com.transportes.auth.dto.LoginRequest;
 import com.transportes.auth.dto.LoginResponse;
 import com.transportes.auth.servicios.AuthService;
@@ -41,6 +42,16 @@ public class AuthController {
     @PostMapping("/api/auth/login")
     public ResponseEntity<LoginResponse> iniciarSesion(@Valid @RequestBody LoginRequest datos) {
         return ResponseEntity.ok(authService.iniciarSesion(datos));
+    }
+
+    /**
+     * Endpoint publico del Sistema Empresarial. Igual que el login del
+     * Portal, pero solo entrega el token a quien esta en la tabla empleado
+     * (personal de agencia o gerente); a un cliente le responde 403.
+     */
+    @PostMapping("/api/auth/login-empresarial")
+    public ResponseEntity<LoginEmpresarialResponse> iniciarSesionEmpresarial(@Valid @RequestBody LoginRequest datos) {
+        return ResponseEntity.ok(authService.iniciarSesionEmpresarial(datos));
     }
 
     /**

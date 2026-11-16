@@ -12,6 +12,15 @@ CREATE TABLE IF NOT EXISTS usuario (
  CONSTRAINT uq_usuario_correo UNIQUE (correo),
  CONSTRAINT uq_usuario_google_id UNIQUE (google_id)
 );
+CREATE TABLE IF NOT EXISTS empleado (
+ id_empleado integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ id_usuario integer NOT NULL REFERENCES usuario(id_usuario),
+ rol varchar(20) NOT NULL,
+ id_agencia bigint,
+ activo boolean NOT NULL DEFAULT true,
+ fecha_creacion timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_empleado_usuario UNIQUE (id_usuario)
+);
 CREATE TABLE IF NOT EXISTS ubicacion (
  id_ubicacion bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  nombre varchar(255) NOT NULL, distrito varchar(255), provincia varchar(255),
