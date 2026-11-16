@@ -11,6 +11,7 @@ import {
   puedeContinuarDesdeTarifa,
   puedeIniciarPostergacion,
   salidaMsDe,
+  totalPagadoDelPasaje,
   validarElegibilidad,
   validarViajeNuevo,
 } from './postergacion.js'
@@ -141,4 +142,31 @@ test('adapta un boleto real conservando venta, boleto y precio pagado', () => {
   assert.equal(puedeIniciarPostergacion(compra), true)
   assert.equal(puedeIniciarPostergacion({ ...compra, fase: 'REALIZADO', vigente: false }), false)
   assert.equal(adaptarBoletoReal({ ...compra, estado: 'REEMBOLSADA' }, boleto, 'u1').estado, 'CANCELADO')
+})
+
+test('el total pagado del pasaje suma el precio y lo pagado en postergaciones anteriores', () => {
+  assert.equal(totalPagadoDelPasaje({ precioPagado: 43, montoAdicionalPagado: 17 }), 60)
+  assert.equal(totalPagadoDelPasaje({ precioPagado: 43 }), 43)
+  assert.equal(totalPagadoDelPasaje({ precioPagado: 43.1, montoAdicionalPagado: 0.2 }), 43.3, 'sin errores de coma flotante')
+  assert.equal(totalPagadoDelPasaje(null), 0)
+})
+
+test('una segunda postergación compara contra lo ya pagado y no contra el precio original', () => {
+  const pasaje = { precioPagado: 43, montoAdicionalPagado: 17 }
+  const segunda = compararTarifas(totalPagadoDelPasaje(pasaje), 70)
+  assert.equal(segunda.montoAPagar, 10, '70 - (43 + 17)')
+  const mismaSinCorreccion = compararTarifas(pasaje.precioPagado, 70)
+  assert.equal(mismaSinCorreccion.montoAPagar, 27, 'así se calculaba antes: cobraba de más')
+  const cubierta = compararTarifas(totalPagadoDelPasaje(pasaje), 55)
+  assert.equal(cubierta.requierePago, false, '55 <= 60: ya está cubierto')
+})
+
+test('adaptar un boleto real lleva el acumulado pagado en postergaciones que manda el servidor', () => {
+  const compra = { idVenta: 5, codigoCompra: 'C-5', estado: 'CONFIRMADA', fase: 'PROXIMO', vigente: true, origen: 'Lima', destino: 'Piura', fechaSalida: '2026-12-01', horaSalida: '20:00', empresa: 'X', tipoBus: 'Cama', moneda: 'PEN' }
+  const conAdicional = adaptarBoletoReal(compra, { idPasaje: 31, numeroBoleto: 'RL-31', asiento: '8', pasajero: 'Ana', precio: 43, adicionalPagado: 27 }, 'u1')
+  assert.equal(conAdicional.precioPagado, 43, 'el precio de compra no cambia')
+  assert.equal(conAdicional.montoAdicionalPagado, 27)
+  assert.equal(totalPagadoDelPasaje(conAdicional), 70)
+  const sinCampo = adaptarBoletoReal(compra, { idPasaje: 32, numeroBoleto: 'RL-32', asiento: '9', pasajero: 'Ana', precio: 43 }, 'u1')
+  assert.equal(sinCampo.montoAdicionalPagado, 0, 'un servidor sin el campo se trata como sin postergaciones previas')
 })

@@ -121,7 +121,8 @@ public final class ConstructorCompras {
                 fila.idPasaje(), numeroBoleto(fila.idPasaje()),
                 nombre.isEmpty() ? null : nombre,
                 ReglasCompra.enmascararDocumento(fila.tipoDocumento(), fila.numeroDocumento()),
-                fila.numeroAsiento(), fila.piso(), fila.precioPasaje());
+                fila.numeroAsiento(), fila.piso(), fila.precioPasaje(),
+                fila.adicionalPagado() == null ? BigDecimal.ZERO : fila.adicionalPagado());
     }
 
     /** Referencia visible de la compra, derivada de venta.id_venta (no es un código de validación). */

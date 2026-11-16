@@ -84,6 +84,11 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
       return
     }
     const nuevo = resultado.pasaje
+    // Cambio confirmado por el servidor: el detalle ya muestra el pasaje real actualizado, sin simulación.
+    if (nuevo.confirmadoEnServidor) {
+      navegar(`/perfil/pasajes/${pasaje.idVenta}`)
+      return
+    }
     navegar(`/perfil/pasajes/${pasaje.idVenta}`, {
       state: {
         cambioSimulado: {
@@ -240,7 +245,7 @@ function FlujoPostergacion({ pasajeInicial, idCliente }) {
               pasajeOriginal={pasaje}
               alIrAMisPasajes={irAMisPasajes}
               alVerCompra={verCompraActualizada}
-              etiquetaVolver={compraDemo ? 'Ver compra actualizada' : pasaje.deCompraReal ? 'Ver compra simulada' : 'Volver a Mis pasajes'}
+              etiquetaVolver={compraDemo || resultado.pasaje?.confirmadoEnServidor ? 'Ver compra actualizada' : pasaje.deCompraReal ? 'Ver compra simulada' : 'Volver a Mis pasajes'}
               alReelegirAsiento={acciones.reelegirAsiento}
             />
           )}

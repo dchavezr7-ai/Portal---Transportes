@@ -8,6 +8,7 @@ import {
   CODIGOS_RECHAZO,
   aplicarPostergacion,
   compararTarifas,
+  totalPagadoDelPasaje,
   esMismoViaje,
   filtrarViajesPostergables,
   mensajeRechazo,
@@ -59,7 +60,7 @@ export async function buscarViajesPostergables(pasaje, criterios, ahoraMs = Date
 }
 
 export function aplicarTarifaDeEscenario(viaje, pasaje, escenario) {
-  const original = pasaje.precioPagado
+  const original = totalPagadoDelPasaje(pasaje)
   const precios = {
     igual: original,
     superior: original + DIFERENCIA_FORZADA_SUPERIOR,
@@ -70,7 +71,7 @@ export function aplicarTarifaDeEscenario(viaje, pasaje, escenario) {
 }
 
 export function calcularComparacion(pasaje, viaje) {
-  return compararTarifas(pasaje.precioPagado, viaje.precio)
+  return compararTarifas(totalPagadoDelPasaje(pasaje), viaje.precio)
 }
 
 export async function obtenerMapaAsientosPostergacion(viaje, idAsientoSeleccionado = null) {

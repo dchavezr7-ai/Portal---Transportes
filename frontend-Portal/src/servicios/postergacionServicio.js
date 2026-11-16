@@ -11,6 +11,11 @@
 import { buscarViajes } from './viajesServicio.js'
 import { solicitarApi } from './httpCliente.js'
 import { HORAS_MINIMAS_ANTICIPACION, salidaMsDe } from '../utilidades/postergacion.js'
+import {
+  adaptarRespuestaConfirmacion,
+  armarSolicitudConfirmacion,
+  errorDeConfirmacion,
+} from '../utilidades/confirmacionPostergacion.js'
 
 const MS_HORA = 60 * 60 * 1000
 
@@ -115,4 +120,26 @@ export async function buscarViajesPostergables(pasaje, criterios, ahoraMs = Date
     fecha: criterios.fecha,
   })
   return prepararViajesPostergables(pasaje, viajes, ahoraMs)
+}
+
+// HU-02 · Confirmación (criterios 8 a 11) · Pasaje REAL: el servidor aplica el cambio en UNA sola operación
+// (viaje y asiento del pasaje, asiento nuevo ocupado y el original libre) y guarda el historial y el pago adicional.
+// - Aceptada: devuelve el pasaje actualizado con lo que el servidor guardó (nuevo viaje, fecha, horario y asiento).
+// - Rechazada (409): lanza un ErrorConfirmacion con el motivo y el código; el pasaje conserva viaje, asiento y estado.
+// El pago sigue simulado: solo se envía el monto adicional y la referencia del pago simulado.
+export async function confirmarPostergacionEnServidor({ pasaje, viaje, asiento, comparacion, sesion, pago = null }) {
+  const solicitud = armarSolicitudConfirmacion({ viaje, asiento, sesion, comparacion, pago })
+  let respuesta
+  try {
+    respuesta = await solicitarApi(`/api/usuarios/postergaciones/${pasaje.idPasaje}/confirmar`, {
+      method: 'POST',
+      body: JSON.stringify(solicitud),
+    })
+  } catch (error) {
+    throw errorDeConfirmacion(error)
+  }
+  if (!respuesta || respuesta.aceptada !== true) {
+    throw errorDeConfirmacion(new Error('El servidor devolvió una respuesta de confirmación no válida.'))
+  }
+  return adaptarRespuestaConfirmacion(respuesta, { pasaje, viaje, asiento, pago })
 }

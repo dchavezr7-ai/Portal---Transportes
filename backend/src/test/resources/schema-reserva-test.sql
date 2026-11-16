@@ -80,3 +80,16 @@ CREATE TABLE IF NOT EXISTS operacion_pago (
  CONSTRAINT uq_operacion_pago_venta UNIQUE (id_venta),
  CONSTRAINT ck_operacion_pago_monto CHECK (monto > 0)
 );
+-- HU-02 · Confirmación: historial de postergaciones y pago adicional (backend/sql/004_postergacion.sql).
+CREATE TABLE IF NOT EXISTS postergacion (
+ id_postergacion integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ id_pasaje integer NOT NULL REFERENCES pasaje(id_pasaje),
+ id_venta integer NOT NULL REFERENCES venta(id_venta),
+ id_viaje_anterior bigint NOT NULL REFERENCES viaje(id_viaje),
+ id_viaje_nuevo bigint NOT NULL REFERENCES viaje(id_viaje),
+ id_viaje_asiento_anterior integer NOT NULL REFERENCES viaje_asiento(id_viaje_asiento),
+ id_viaje_asiento_nuevo integer NOT NULL REFERENCES viaje_asiento(id_viaje_asiento),
+ importe_adicional numeric(10,2) NOT NULL DEFAULT 0 CHECK (importe_adicional >= 0),
+ referencia_pago varchar(64),
+ fecha_postergacion timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

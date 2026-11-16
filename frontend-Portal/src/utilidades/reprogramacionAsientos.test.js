@@ -93,3 +93,10 @@ test('viajeParaMostrar reemplaza la llegada y duración que el backend no calcul
   assert.equal(viaje.duracion, 'Por confirmar')
   assert.equal(viajeParaMostrar({ horaLlegada: '18:00', duracion: '8 h' }).horaLlegada, '18:00')
 })
+
+test('calcularTarifaDelAsiento descuenta lo ya pagado en postergaciones anteriores', () => {
+  const yaPostergado = { precioPagado: 43, montoAdicionalPagado: 17, moneda: 'PEN' }
+  const comparacion = calcularTarifaDelAsiento(yaPostergado, { precio: 70 })
+  assert.equal(comparacion.original, 60)
+  assert.equal(comparacion.montoAPagar, 10)
+})

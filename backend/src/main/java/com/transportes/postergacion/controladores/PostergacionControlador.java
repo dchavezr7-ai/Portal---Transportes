@@ -7,14 +7,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.transportes.postergacion.dto.ConfirmacionPostergacionDto;
+import com.transportes.postergacion.dto.ConfirmarPostergacionRequest;
 import com.transportes.postergacion.dto.ConsultaPostergacionDto;
+import com.transportes.postergacion.servicios.ConfirmacionPostergacionServicio;
 import com.transportes.postergacion.servicios.PostergacionServicio;
 import com.transportes.security.servicios.UsuarioAutenticado;
+
+import jakarta.validation.Valid;
 
 /**
  * HU-02 · Cambio de pasaje.
@@ -27,9 +34,12 @@ import com.transportes.security.servicios.UsuarioAutenticado;
 public class PostergacionControlador {
 
     private final PostergacionServicio postergaciones;
+    private final ConfirmacionPostergacionServicio confirmaciones;
 
-    public PostergacionControlador(PostergacionServicio postergaciones) {
+    public PostergacionControlador(PostergacionServicio postergaciones,
+                                   ConfirmacionPostergacionServicio confirmaciones) {
         this.postergaciones = postergaciones;
+        this.confirmaciones = confirmaciones;
     }
 
     /** Ejemplo: GET /api/usuarios/postergaciones/26/viajes?origen=Trujillo&destino=Lima&fecha=2026-11-20 */
@@ -40,6 +50,18 @@ public class PostergacionControlador {
                                          @RequestParam String destino,
                                          @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         return postergaciones.consultarViajes(idDe(usuario), idPasaje, origen, destino, fecha);
+    }
+
+    /**
+     * Confirma la postergación (HU-02, criterios 8 a 11): 200 con el nuevo viaje, fecha, horario y asiento si fue
+     * aceptada; 409 con el motivo en {@code mensaje} si fue rechazada (el pasaje queda como estaba).
+     * Ejemplo: POST /api/usuarios/postergaciones/26/confirmar
+     */
+    @PostMapping("/{idPasaje}/confirmar")
+    public ConfirmacionPostergacionDto confirmar(@AuthenticationPrincipal UsuarioAutenticado usuario,
+                                                 @PathVariable int idPasaje,
+                                                 @Valid @RequestBody ConfirmarPostergacionRequest solicitud) {
+        return confirmaciones.confirmar(idDe(usuario), idPasaje, solicitud);
     }
 
     private static int idDe(UsuarioAutenticado usuario) {
