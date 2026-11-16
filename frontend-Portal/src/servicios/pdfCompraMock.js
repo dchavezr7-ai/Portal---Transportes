@@ -1,18 +1,22 @@
-import { formatearFechaCorta, formatearPrecio } from '../utilidades/formato.js'
+import { formatearFechaCorta, formatearFechaHoraLima, formatearPrecio } from '../utilidades/formato.js'
 
-/** Nombre del archivo: uno para el viaje original y otro por cada pasaje cambiado. */
-export function nombreArchivoMock(compra, documento) {
+/**
+ * Nombre del archivo: uno para el viaje original y otro por cada pasaje cambiado.
+ * Con `esPrueba` (vista previa simulada) termina en "-prueba"; el PDF de una compra real no.
+ */
+export function nombreArchivoMock(compra, documento, { esPrueba = true } = {}) {
   const sufijo = documento.tipo === 'cambiado'
     ? `${documento.boletos[0].numeroBoleto}-cambiado`
     : 'viaje-original'
-  return `RutaLibre-${compra.codigoCompra}-${sufijo}-prueba.pdf`
+  return `RutaLibre-${compra.codigoCompra}-${sufijo}${esPrueba ? '-prueba' : ''}.pdf`
 }
 
 /**
- * PDF de prueba de UN documento de `documentosCambio`: el viaje original con los pasajes
- * que quedaron, o un pasaje cambiado con su viaje nuevo.
+ * PDF de UN documento de `documentosCambio`: el viaje original con los pasajes que quedaron, o un pasaje
+ * cambiado con su viaje nuevo. Con `esPrueba` (por defecto) lleva los avisos de "documento de prueba" de la vista
+ * previa simulada; con `esPrueba: false` es el PDF de una compra real, sin esos avisos.
  */
-export async function crearPdfDocumentoMock(compra, documento) {
+export async function crearPdfDocumentoMock(compra, documento, { esPrueba = true } = {}) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
   const azul = [15, 76, 92]
@@ -31,8 +35,10 @@ export async function crearPdfDocumentoMock(compra, documento) {
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(17)
   texto('RutaLibre', 15, 16)
-  pdf.setFontSize(8)
-  texto('DOCUMENTO DE PRUEBA - SIN VALIDEZ PARA VIAJAR', 195, 16, { align: 'right' })
+  if (esPrueba) {
+    pdf.setFontSize(8)
+    texto('DOCUMENTO DE PRUEBA - SIN VALIDEZ PARA VIAJAR', 195, 16, { align: 'right' })
+  }
 
   // Título y viaje del documento
   pdf.setTextColor(...color)
@@ -68,6 +74,13 @@ export async function crearPdfDocumentoMock(compra, documento) {
     pdf.setTextColor(...gris)
     texto(`Reemplaza a: ${anterior.origen} - ${anterior.destino}, ${formatearFechaCorta(anterior.fechaSalida)} ${anterior.horaSalida}, asiento ${anterior.asiento}`, 20, y + 7.5)
     y += 18
+    if (documento.fechaCambio) {
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(...gris)
+      texto(`Cambio realizado el ${formatearFechaHoraLima(documento.fechaCambio)}`, 20, y - 3)
+      y += 6
+    }
   } else {
     y += 4
   }
@@ -128,27 +141,30 @@ export async function crearPdfDocumentoMock(compra, documento) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7)
     pdf.setTextColor(...gris)
-    texto('Vista previa simulada. Ningún cambio ni pago se registró en el sistema.', 15, 287)
+    if (esPrueba) texto('Vista previa simulada. Ningún cambio ni pago se registró en el sistema.', 15, 287)
     texto(`${pagina}/${paginas}`, 195, 287, { align: 'right' })
   }
   return pdf
 }
 
-export async function descargarPdfDocumentoMock(compra, documento) {
-  const pdf = await crearPdfDocumentoMock(compra, documento)
-  pdf.save(nombreArchivoMock(compra, documento))
+export async function descargarPdfDocumentoMock(compra, documento, opciones) {
+  const pdf = await crearPdfDocumentoMock(compra, documento, opciones)
+  pdf.save(nombreArchivoMock(compra, documento, opciones))
 }
 
-export async function verPdfDocumentoMock(compra, documento) {
+export async function verPdfDocumentoMock(compra, documento, opciones) {
   // Abrir la pestaña antes del await evita que el navegador bloquee el visor.
   const pestaña = window.open('', '_blank')
   if (!pestaña) throw new Error('No se pudo abrir una pestaña para el PDF.')
   pestaña.opener = null
   try {
-    const pdf = await crearPdfDocumentoMock(compra, documento)
+    const pdf = await crearPdfDocumentoMock(compra, documento, opciones)
     pestaña.location.replace(pdf.output('bloburl'))
   } catch (error) {
     pestaña.close()
     throw error
   }
 }
+
+/** Opciones para el PDF de una compra REAL: el mismo documento, sin los avisos de "documento de prueba". */
+export const OPCIONES_PDF_REAL = Object.freeze({ esPrueba: false })

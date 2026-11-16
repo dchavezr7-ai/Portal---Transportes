@@ -1,5 +1,5 @@
 import { EstadoDisponibilidad } from '../comunes/EstadoDisponibilidad'
-import { formatearFechaCorta, formatearFechaHoraCompra, formatearFechaLarga, formatearPrecio } from '../../utilidades/formato'
+import { formatearFechaCorta, formatearFechaHoraCompra, formatearFechaHoraLima, formatearFechaLarga, formatearPrecio } from '../../utilidades/formato'
 import { documentosCambio, resumenDocumento } from '../../utilidades/documentosCambio'
 import { avisoTotal, datosFaltantes, estadoVisible } from '../../utilidades/pasajesVista'
 import './tarjetaTicket.css'
@@ -102,6 +102,7 @@ export function TarjetaTicket({ compra, onDescargar, onVerPdf, descargando, erro
                     <small>Viaje anterior</small>
                     <span>{boleto.cambio.anterior.origen} → {boleto.cambio.anterior.destino}</span>
                     <span>{formatearFechaCorta(boleto.cambio.anterior.fechaSalida)} · {boleto.cambio.anterior.horaSalida} · Asiento {boleto.cambio.anterior.asiento}</span>
+                    {boleto.cambio.fecha && <span>Cambio realizado el {formatearFechaHoraLima(boleto.cambio.fecha)}</span>}
                   </div>
                   <div className="tarjeta-ticket__diferencia">
                     <small>Diferencia pagada</small>
@@ -131,7 +132,7 @@ export function TarjetaTicket({ compra, onDescargar, onVerPdf, descargando, erro
         <div className="tarjeta-ticket__acciones">
           {compra.documentoDisponible ? (
             <>
-              {compra.esMock && onVerPdf ? (
+              {(compra.esMock || hayCambios) && onVerPdf ? (
                 <ul className="tarjeta-ticket__pdfs">
                   {documentosCambio(compra).map((documento) => (
                     <li key={documento.clave} className={`tarjeta-ticket__pdf${documento.tipo === 'cambiado' ? ' tarjeta-ticket__pdf--cambiado' : ''}`}>

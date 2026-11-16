@@ -38,6 +38,7 @@ export function documentosCambio(compra) {
       titulo: 'Pasaje cambiado',
       viaje: boleto.viajeVigente,
       anterior: boleto.cambio.anterior,
+      fechaCambio: boleto.cambio.fecha ?? null,
       boletos: [boleto],
       precioOriginal: precio,
       adicionalPagado: adicional,

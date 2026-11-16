@@ -147,6 +147,9 @@ export function puedeIniciarPostergacion(compra) {
 }
 
 export function adaptarBoletoReal(compra, boleto, idCliente) {
+  // El boleto viaja en SU viaje vigente (el nuevo, si ya fue cambiado). La compra describe el viaje en que se
+  // compró, que puede ser otro. Las compras de prueba no traen `viajeVigente` y usan los datos de la compra.
+  const viaje = boleto.viajeVigente ?? compra
   return {
     deCompraReal: true,
     idPasaje: boleto.idPasaje,
@@ -158,14 +161,14 @@ export function adaptarBoletoReal(compra, boleto, idCliente) {
     idCliente,
     estado: estadoPostergableDeCompra(compra),
     pasajero: boleto.pasajero,
-    idViaje: compra.idViaje,
-    origen: compra.origen,
-    destino: compra.destino,
-    fechaSalida: compra.fechaSalida,
-    horaSalida: compra.horaSalida,
-    horaLlegada: compra.horaLlegada,
-    empresa: compra.empresa,
-    tipoBus: compra.tipoBus,
+    idViaje: viaje.idViaje ?? compra.idViaje,
+    origen: viaje.origen,
+    destino: viaje.destino,
+    fechaSalida: viaje.fechaSalida,
+    horaSalida: viaje.horaSalida,
+    horaLlegada: viaje.horaLlegada ?? compra.horaLlegada,
+    empresa: viaje.empresa ?? compra.empresa,
+    tipoBus: viaje.tipoBus ?? compra.tipoBus,
     asiento: boleto.asiento,
     precioPagado: Number(boleto.precio),
     moneda: compra.moneda ?? 'PEN',
