@@ -1,9 +1,13 @@
 package com.transportes.auth.servicios;
 
+import com.transportes.auth.dto.LoginEmpresarialResponse;
 import com.transportes.auth.dto.LoginRequest;
 import com.transportes.auth.dto.LoginResponse;
 import com.transportes.auth.dto.UsuarioResumenResponse;
+import com.transportes.auth.excepciones.AccesoEmpresarialDenegadoException;
 import com.transportes.auth.excepciones.CredencialesInvalidasException;
+import com.transportes.empleados.entidades.Empleado;
+import com.transportes.empleados.servicios.EmpleadoService;
 import com.transportes.security.servicios.JwtService;
 import com.transportes.security.servicios.TokenInvalidadoService;
 import com.transportes.usuarios.entidades.Usuario;
@@ -23,24 +27,61 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final String MENSAJE_CREDENCIALES_INVALIDAS = "Correo o contrasena incorrectos.";
+    private static final String MENSAJE_SIN_ACCESO_EMPRESARIAL =
+            "Tu cuenta no tiene acceso al Sistema Empresarial.";
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final TokenInvalidadoService tokenInvalidadoService;
+    private final EmpleadoService empleadoService;
 
     public AuthService(UsuarioRepository usuarioRepository,
                         PasswordEncoder passwordEncoder,
                         JwtService jwtService,
-                        TokenInvalidadoService tokenInvalidadoService) {
+                        TokenInvalidadoService tokenInvalidadoService,
+                        EmpleadoService empleadoService) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.tokenInvalidadoService = tokenInvalidadoService;
+        this.empleadoService = empleadoService;
     }
 
+    /** Login del Portal: cualquier cuenta activa con correo y contrasena correctos. */
     @Transactional(readOnly = true)
     public LoginResponse iniciarSesion(LoginRequest datos) {
+        Usuario usuario = validarCredenciales(datos);
+        return crearRespuesta(usuario);
+    }
+
+    /**
+     * Login del Sistema Empresarial: ademas de las credenciales, exige que
+     * la cuenta tenga una fila activa en la tabla empleado. A un cliente no
+     * se le entrega token.
+     */
+    @Transactional(readOnly = true)
+    public LoginEmpresarialResponse iniciarSesionEmpresarial(LoginRequest datos) {
+        Usuario usuario = validarCredenciales(datos);
+
+        Empleado empleado = empleadoService.buscarEmpleadoActivo(usuario.getIdUsuario())
+                .orElseThrow(() -> new AccesoEmpresarialDenegadoException(MENSAJE_SIN_ACCESO_EMPRESARIAL));
+
+        String token = jwtService.generarToken(usuario.getIdUsuario(), usuario.getCorreo());
+        return new LoginEmpresarialResponse(
+                token,
+                crearResumen(usuario),
+                empleado.getRol().name(),
+                empleado.getIdAgencia(),
+                empleadoService.obtenerNombreSede(empleado));
+    }
+
+    /**
+     * Comprueba correo, estado y contrasena. Devuelve el usuario si todo es
+     * correcto; si no, lanza CredencialesInvalidasException (respuesta 401).
+     * La comparten los dos logins para no repetir las reglas.
+     */
+    private Usuario validarCredenciales(LoginRequest datos) {
         Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(datos.getCorreo())
                 .orElseThrow(() -> new CredencialesInvalidasException(MENSAJE_CREDENCIALES_INVALIDAS));
 
@@ -61,12 +102,18 @@ public class AuthService {
             throw new CredencialesInvalidasException(MENSAJE_CREDENCIALES_INVALIDAS);
         }
 
+        return usuario;
+    }
+
+    /** Genera el JWT del Portal y lo devuelve junto con el resumen del usuario. */
+    private LoginResponse crearRespuesta(Usuario usuario) {
         String token = jwtService.generarToken(usuario.getIdUsuario(), usuario.getCorreo());
+        return new LoginResponse(token, crearResumen(usuario));
+    }
 
-        UsuarioResumenResponse resumen = new UsuarioResumenResponse(
+    private UsuarioResumenResponse crearResumen(Usuario usuario) {
+        return new UsuarioResumenResponse(
                 usuario.getIdUsuario(), usuario.getNombres(), usuario.getApellidos(), usuario.getCorreo());
-
-        return new LoginResponse(token, resumen);
     }
 
     /**

@@ -12,9 +12,8 @@ const roleLabels: Record<string, string> = {
 }
 
 /**
- * Menú del usuario. Lee la sesión de `authStore`; hoy es un usuario
- * simulado, pero el componente ya está listo para conectarse a la
- * autenticación real sin cambios estructurales.
+ * Menú del usuario. Lee la sesión de `authStore` (usuario real que
+ * inició sesión en el backend) y permite cerrar sesión.
  */
 export function UserMenu() {
   const user = useAuthStore((s) => s.user)

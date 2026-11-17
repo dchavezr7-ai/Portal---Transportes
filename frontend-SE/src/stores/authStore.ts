@@ -1,123 +1,118 @@
 import { create } from 'zustand'
-import type { AuthSession, AuthUser, Permission } from '@/types/auth'
+import { authService } from '@/services'
+import { configurarAlSesionVencida, configurarProveedorToken, esApiError } from '@/services/api/httpClient'
+import type { AuthSession, AuthUser, Permission, RespuestaLogin, RolEmpresa, UserRole } from '@/types/auth'
 
 /**
- * Store de sesión. Autenticación 100% simulada (sin backend, sin JWT real):
- * dos usuarios mock (personal de agencia y gerente) con permisos distintos.
+ * Store de sesión del Sistema Empresarial, conectado al backend.
  *
- * `status` representa el ciclo de vida real de la sesión:
- *   'loading'         -> verificando si ya existe una sesión (al abrir la app)
+ * `status` representa el ciclo de vida de la sesión:
+ *   'loading'         -> revisando si ya hay una sesión guardada (al abrir la app)
  *   'unauthenticated' -> no hay sesión: se muestra el Login
  *   'authenticated'   -> hay sesión: se muestra el Shell (Sidebar/Header/SE)
  *
- * La sesión se guarda en `sessionStorage` (no `localStorage`): sobrevive a
- * un refresh de la pestaña, como cualquier sesión real, pero no persiste
- * entre reinicios del navegador ni es la sesión "de negocio" del MVP — es
- * solo la marca de "hay alguien logueado", igual que una cookie de sesión.
- * Como la app no tiene rutas (una sola Main View), no existe una URL del
- * shell a la que el botón "atrás" del navegador pueda regresar tras el
- * logout: `ProtectedRoute` ya decide qué mostrar únicamente a partir de
- * este `status`.
+ * El token JWT y el usuario se guardan en `sessionStorage`: sobreviven a un
+ * refresh de la pestaña, pero se borran al cerrar el navegador.
  */
 
 const SESSION_KEY = 'rutalibre-se-session'
 /** `agenciaId` del gerente: no está atado a una sede. */
 export const TODAS_LAS_SEDES = 'todas'
-const RETRASO_VERIFICACION_MS = 450
-const RETRASO_LOGIN_MS = 700
 
 /**
- * Dos perfiles de demostración:
- *  - Personal de agencia: módulos de Operaciones y Comercial, atado a UNA sede.
- *  - Gerente: solo el módulo de Supervisión (Dashboard), sobre todas las sedes.
+ * Patrón Estrategia (tabla de perfiles): cada rol de la tabla empleado
+ * define qué ve la persona en el SE. Para agregar un rol nuevo basta otra fila.
  */
-const staffUser: AuthUser = {
-  id: 'usr_demo_1',
-  name: 'Camila Rojas',
-  email: 'camila.rojas@rutalibre.com',
-  role: 'staff',
-  permissions: ['pasajes:registrar'] satisfies Permission[],
-  agenciaId: 'lim-norte',
+const PERFILES_POR_ROL: Record<RolEmpresa, { role: UserRole; permissions: Permission[] }> = {
+  AGENCIA: { role: 'staff', permissions: ['pasajes:registrar'] },
+  GERENTE: { role: 'manager', permissions: ['dashboard:ver'] },
 }
 
-const managerUser: AuthUser = {
-  id: 'usr_demo_2',
-  name: 'Ricardo Salazar',
-  email: 'ricardo.salazar@rutalibre.com',
-  role: 'manager',
-  permissions: ['dashboard:ver'] satisfies Permission[],
-  agenciaId: TODAS_LAS_SEDES,
+/** Lo que se guarda en sessionStorage. */
+interface SesionGuardada {
+  token: string
+  user: AuthUser
 }
 
-const usuarios: AuthUser[] = [staffUser, managerUser]
+/** Convierte la respuesta del backend en el usuario que usa la interfaz. */
+function crearUsuario(respuesta: RespuestaLogin): AuthUser {
+  const datos = respuesta.usuario
+  const perfil = PERFILES_POR_ROL[respuesta.rol]
+  return {
+    id: String(datos.idUsuario),
+    name: `${datos.nombres} ${datos.apellidos}`,
+    email: datos.correo,
+    role: perfil.role,
+    permissions: perfil.permissions,
+    // Sin sede (gerente) significa que supervisa todas.
+    agenciaId: respuesta.idAgencia === null ? TODAS_LAS_SEDES : String(respuesta.idAgencia),
+    agenciaNombre: respuesta.nombreAgencia,
+  }
+}
 
-/**
- * Contraseña de las cuentas de demostración. Se valida aquí (no hay backend)
- * y no se imprime en la UI: los botones de acceso de demostración entran
- * directo, sin exponerla como texto.
- */
-const DEMO_PASSWORD = 'RutaLibre#2026'
-
-export type PerfilDemo = 'gerente' | 'agencia'
+function leerSesionGuardada(): SesionGuardada | null {
+  try {
+    const texto = window.sessionStorage.getItem(SESSION_KEY)
+    return texto ? (JSON.parse(texto) as SesionGuardada) : null
+  } catch {
+    return null
+  }
+}
 
 export type LoginResult = { ok: true } | { ok: false; message: string }
 
 interface AuthStoreState extends AuthSession {
-  /** Comprueba si ya existe una sesión (sessionStorage) y resuelve el estado inicial. Se llama una sola vez al montar la app. */
+  token: string | null
+  /** Revisa si ya existe una sesión guardada. Se llama una sola vez al montar la app. */
   init: () => void
   login: (email: string, password: string) => Promise<LoginResult>
-  /** Entra directo con una cuenta de demostración (sin escribir credenciales). */
-  loginDemo: (perfil: PerfilDemo) => Promise<void>
   logout: () => void
 }
 
-function esperar(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-export const useAuthStore = create<AuthStoreState>()((set) => ({
+export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   user: null,
+  token: null,
   status: 'loading',
 
   init: () => {
-    const guardado = usuarios.find((u) => u.id === window.sessionStorage.getItem(SESSION_KEY))
-    const haySesion = !!guardado
-    // Pequeño retraso solo cuando hay sesión que "verificar": si no la hay,
-    // resolver de inmediato evita una espera artificial en la primera visita.
-    esperar(haySesion ? RETRASO_VERIFICACION_MS : 0).then(() => {
-      set(guardado ? { user: guardado, status: 'authenticated' } : { user: null, status: 'unauthenticated' })
-    })
+    const guardada = leerSesionGuardada()
+    if (guardada) set({ user: guardada.user, token: guardada.token, status: 'authenticated' })
+    else set({ user: null, token: null, status: 'unauthenticated' })
   },
 
   login: async (email, password) => {
-    await esperar(RETRASO_LOGIN_MS)
-    const usuario = usuarios.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
-    if (!usuario || password !== DEMO_PASSWORD) {
-      return { ok: false, message: 'Correo o contraseña incorrectos. Verifica tus datos e inténtalo de nuevo.' }
+    if (!email.trim() || !password) {
+      return { ok: false, message: 'Ingresa tu correo y tu contraseña.' }
     }
-    window.sessionStorage.setItem(SESSION_KEY, usuario.id)
-    set({ user: usuario, status: 'authenticated' })
-    return { ok: true }
-  },
-
-  loginDemo: async (perfil) => {
-    await esperar(RETRASO_LOGIN_MS)
-    const usuario = perfil === 'gerente' ? managerUser : staffUser
-    window.sessionStorage.setItem(SESSION_KEY, usuario.id)
-    set({ user: usuario, status: 'authenticated' })
+    try {
+      const respuesta = await authService.iniciarSesion(email, password)
+      const sesion: SesionGuardada = { token: respuesta.token, user: crearUsuario(respuesta) }
+      window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(sesion))
+      set({ user: sesion.user, token: sesion.token, status: 'authenticated' })
+      return { ok: true }
+    } catch (error) {
+      // El backend envía el motivo (credenciales incorrectas, cuenta sin acceso, etc.).
+      const mensaje = esApiError(error) ? error.message : 'No se pudo iniciar sesión. Inténtalo de nuevo.'
+      return { ok: false, message: mensaje }
+    }
   },
 
   logout: () => {
+    // Se avisa al backend sin esperar la respuesta: la sesión local se cierra igual.
+    if (get().token) authService.cerrarSesion().catch(() => undefined)
     window.sessionStorage.removeItem(SESSION_KEY)
-    set({ user: null, status: 'unauthenticated' })
+    set({ user: null, token: null, status: 'unauthenticated' })
   },
 }))
 
-/** Datos públicos de las cuentas de demostración (para rotular los botones del login). */
-export const cuentasDemo: Record<PerfilDemo, { nombre: string; agenciaId: string }> = {
-  gerente: { nombre: managerUser.name, agenciaId: managerUser.agenciaId },
-  agencia: { nombre: staffUser.name, agenciaId: staffUser.agenciaId },
-}
+// Cada petición al backend lleva el token de la sesión actual.
+configurarProveedorToken(() => useAuthStore.getState().token)
+
+// Si el backend rechaza el token (venció o se cerró), se vuelve al Login.
+configurarAlSesionVencida(() => {
+  window.sessionStorage.removeItem(SESSION_KEY)
+  useAuthStore.setState({ user: null, token: null, status: 'unauthenticated' })
+})
 
 /** `'*'` concede todo; sin permiso requerido siempre se permite. */
 export function hasPermission(user: AuthUser | null, required?: string): boolean {

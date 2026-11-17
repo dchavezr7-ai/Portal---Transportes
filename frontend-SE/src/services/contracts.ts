@@ -1,4 +1,5 @@
 import type { Agencia } from '@/types/agency'
+import type { RespuestaLogin } from '@/types/auth'
 import type {
   EventoAsiento,
   FiltrosConsulta,
@@ -43,4 +44,9 @@ export interface ClientesService {
   listar(consulta: ConsultaClientes): Promise<PaginaClientes>
   indicadores(): Promise<IndicadoresClientes>
   detalle(idPasajero: number): Promise<ClienteDetalle>
+}
+
+export interface AuthService {
+  iniciarSesion(correo: string, contrasena: string): Promise<RespuestaLogin>
+  cerrarSesion(): Promise<void>
 }

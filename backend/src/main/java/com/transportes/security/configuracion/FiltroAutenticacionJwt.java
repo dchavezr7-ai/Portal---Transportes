@@ -1,5 +1,6 @@
 package com.transportes.security.configuracion;
 
+import com.transportes.empleados.servicios.EmpleadoService;
 import com.transportes.security.servicios.DetalleTokenJwt;
 import com.transportes.security.servicios.JwtService;
 import com.transportes.security.servicios.TokenInvalidadoService;
@@ -14,6 +15,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -43,13 +45,16 @@ public class FiltroAutenticacionJwt extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final TokenInvalidadoService tokenInvalidadoService;
     private final UsuarioService usuarioService;
+    private final EmpleadoService empleadoService;
 
     public FiltroAutenticacionJwt(JwtService jwtService,
                                 TokenInvalidadoService tokenInvalidadoService,
-                                UsuarioService usuarioService) {
+                                UsuarioService usuarioService,
+                                EmpleadoService empleadoService) {
         this.jwtService = jwtService;
         this.tokenInvalidadoService = tokenInvalidadoService;
         this.usuarioService = usuarioService;
+        this.empleadoService = empleadoService;
     }
 
     @Override
@@ -79,10 +84,16 @@ public class FiltroAutenticacionJwt extends OncePerRequestFilter {
             Usuario usuario = usuarioService.obtenerPorId(idUsuario);
 
             if (usuario.estaActivo() && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UsuarioAutenticado principal = new UsuarioAutenticado(usuario.getIdUsuario(), usuario.getCorreo());
+                // AGENCIA o GERENTE si esta en la tabla empleado; si no, CLIENTE.
+                String rol = empleadoService.obtenerRol(usuario.getIdUsuario());
+                UsuarioAutenticado principal = new UsuarioAutenticado(usuario.getIdUsuario(), usuario.getCorreo(), rol);
+
+                // El rol se entrega a Spring como "ROLE_AGENCIA", "ROLE_GERENTE" o
+                // "ROLE_CLIENTE"; asi ConfiguracionSeguridad puede usar hasAnyRole(...).
+                SimpleGrantedAuthority permiso = new SimpleGrantedAuthority("ROLE_" + rol);
 
                 UsernamePasswordAuthenticationToken autenticacion =
-                        new UsernamePasswordAuthenticationToken(principal, null, List.of());
+                        new UsernamePasswordAuthenticationToken(principal, null, List.of(permiso));
                 autenticacion.setDetails(new DetalleTokenJwt(jti, jwtService.obtenerExpiracion(claims)));
                 SecurityContextHolder.getContext().setAuthentication(autenticacion);
             }

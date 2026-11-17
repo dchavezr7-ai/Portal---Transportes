@@ -1,26 +1,18 @@
 import { Building2, Globe2 } from 'lucide-react'
-import { Skeleton } from '@/components/feedback/Skeleton'
-import { useCatalogo } from '@/hooks/useCatalogo'
 import { TODAS_LAS_SEDES, useAuthStore } from '@/stores/authStore'
 
 /**
  * Sede asignada al usuario: solo informativa (no se puede cambiar). El
- * personal de agencia queda atado a la sede con la que ingresó —que es
- * también la sede de venta de sus pasajes—; el gerente supervisa todas.
+ * nombre viene del backend (tabla empleado + agencia) al iniciar sesión;
+ * el gerente supervisa todas las sedes.
  */
 export function BranchInfo() {
   const user = useAuthStore((s) => s.user)
-  const { catalogo, cargando } = useCatalogo()
 
   if (!user) return null
 
   const global = user.agenciaId === TODAS_LAS_SEDES
-  const agencia = catalogo?.agencias.find((a) => a.id === user.agenciaId)
-
-  if (!global && (cargando || !catalogo)) return <Skeleton className="h-10 w-48 rounded-[10px]" />
-
-  const titulo = global ? 'Todas las sedes' : (agencia?.name ?? '—')
-  const detalle = global ? 'Gerencia general' : (agencia?.location ?? 'Sede asignada')
+  const titulo = global ? 'Todas las sedes' : (user.agenciaNombre ?? '—')
   const Icono = global ? Globe2 : Building2
 
   return (
@@ -38,7 +30,7 @@ export function BranchInfo() {
         <span className="block max-w-[200px] truncate text-[13px] font-semibold text-text-900">{titulo}</span>
       </span>
       <span className="sr-only sm:hidden">{titulo}</span>
-      <span className="hidden text-xs text-text-500 xl:block">· {detalle}</span>
+      {global && <span className="hidden text-xs text-text-500 xl:block">· Gerencia general</span>}
     </div>
   )
 }

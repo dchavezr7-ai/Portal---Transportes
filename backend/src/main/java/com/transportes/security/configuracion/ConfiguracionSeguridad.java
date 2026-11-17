@@ -1,5 +1,6 @@
 package com.transportes.security.configuracion;
 
+import com.transportes.empleados.servicios.EmpleadoService;
 import com.transportes.security.servicios.JwtService;
 import com.transportes.security.servicios.TokenInvalidadoService;
 import com.transportes.usuarios.servicios.UsuarioService;
@@ -45,6 +46,7 @@ public class ConfiguracionSeguridad {
         private final TokenInvalidadoService tokenInvalidadoService;
         private final UsuarioService usuarioService;
         private final PuntoEntradaJwt puntoEntradaJwt;
+        private final EmpleadoService empleadoService;
 
         @Value("${seguridad.cors.origenes-permitidos}")
         private String origenesPermitidos;
@@ -52,11 +54,13 @@ public class ConfiguracionSeguridad {
         public ConfiguracionSeguridad(JwtService jwtService,
                         TokenInvalidadoService tokenInvalidadoService,
                         UsuarioService usuarioService,
-                        PuntoEntradaJwt puntoEntradaJwt) {
+                        PuntoEntradaJwt puntoEntradaJwt,
+                        EmpleadoService empleadoService) {
                 this.jwtService = jwtService;
                 this.tokenInvalidadoService = tokenInvalidadoService;
                 this.usuarioService = usuarioService;
                 this.puntoEntradaJwt = puntoEntradaJwt;
+                this.empleadoService = empleadoService;
         }
 
         @Bean
@@ -67,7 +71,7 @@ public class ConfiguracionSeguridad {
         @Bean
         public SecurityFilterChain cadenaFiltrosSeguridad(HttpSecurity http) throws Exception {
                 FiltroAutenticacionJwt filtroJwt = new FiltroAutenticacionJwt(jwtService, tokenInvalidadoService,
-                                usuarioService);
+                                usuarioService, empleadoService);
 
                 http
                                 .cors(cors -> cors.configurationSource(fuenteConfiguracionCors()))
@@ -97,6 +101,10 @@ public class ConfiguracionSeguridad {
                                                 // Crear una cuenta no requiere una sesion previa.
                                                 .requestMatchers(HttpMethod.POST, "/api/usuarios/registro").permitAll()
                                                 .requestMatchers("/api/auth/login").permitAll()
+                                                // Login del Sistema Empresarial: publico; el servicio
+                                                // rechaza a quien no sea personal de agencia o gerente.
+                                                .requestMatchers(HttpMethod.POST, "/api/auth/login-empresarial")
+                                                .permitAll()
                                                 // Inicio de sesion/registro con Google: la identidad se
                                                 // comprueba validando el ID token de Google en el servicio.
                                                 .requestMatchers(HttpMethod.POST, "/api/auth/google").permitAll()
@@ -120,6 +128,9 @@ public class ConfiguracionSeguridad {
                                                 // la cuenta. La consulta exige el token de la constancia.
                                                 .requestMatchers(HttpMethod.POST, "/api/reclamos").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/api/reclamos/**").permitAll()
+                                                // Clientes del Sistema Empresarial: expone datos personales de
+                                                // los pasajeros, solo para personal de agencia o gerente.
+                                                .requestMatchers("/api/clientes/**").hasAnyRole("AGENCIA", "GERENTE")
                                                 // Pagos: la venta se asocia al usuario autenticado.
                                                 .requestMatchers("/api/pagos/**").authenticated()
                                                 // Cualquier otra ruta (dominios aun no implementados,

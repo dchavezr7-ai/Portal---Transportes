@@ -8,7 +8,10 @@ package com.transportes.security.servicios;
  * Es un registro simple: no vuelve a consultar la base de datos en cada
  * peticion salvo cuando el propio filtro lo necesita para verificar que el
  * usuario siga activo.
+ *
+ * Tambien guarda el rol (AGENCIA, GERENTE o CLIENTE), para saber si es
+ * personal de agencia, gerente o cliente (tarjeta CRC UsuarioAutenticado).
  */
-public record UsuarioAutenticado(Integer idUsuario, String correo) {
+public record UsuarioAutenticado(Integer idUsuario, String correo, String rol) {
 }
 
